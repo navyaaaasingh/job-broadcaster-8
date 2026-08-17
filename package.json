@@ -1,0 +1,22 @@
+{
+  "name": "job-broadcaster",
+  "version": "1.0.0",
+  "description": "Fetches job postings from Adzuna, Reed, Jooble and other configured sources, lets you pick which ones to share, upload a recipient list, and email that exact same job list to everyone on it.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "lowdb": "^1.0.0",
+    "mammoth": "^1.8.0",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1",
+    "playwright": "^1.47.0"
+  }
+}

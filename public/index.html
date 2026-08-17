@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Job Broadcaster</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="wrap">
+  <header class="head">
+    <div class="mark">JB</div>
+    <div>
+      <h1>Job Broadcaster</h1>
+      <p class="sub">Search Adzuna, Reed &amp; Jooble. Pick the jobs. Send one email to your whole list.</p>
+    </div>
+  </header>
+
+  <div class="steps">
+    <span class="step" data-step="1">1. Find jobs</span>
+    <span class="step" data-step="2">2. Select jobs</span>
+    <span class="step" data-step="3">3. Recipients</span>
+    <span class="step" data-step="4">4. Send</span>
+  </div>
+
+  <main class="grid single">
+
+    <section class="card">
+      <h2>1 &middot; 2 — Find &amp; select jobs</h2>
+
+      <form id="ai-search-form" class="inline-form">
+        <input type="text" name="prompt" placeholder='Or describe what you want — e.g. "Software Engineering internships in UK"' />
+        <button type="submit" class="ghost">AI Search</button>
+      </form>
+      <p class="hint">Searches the open web beyond Adzuna/Reed/Jooble. Slower — real page rendering + AI extraction. Excludes LinkedIn and Indeed.</p>
+
+      <form id="resume-search-form" class="resume-form">
+        <label class="file-btn resume-file-btn">
+          Upload resumes (PDF/DOCX/TXT, up to 10)
+          <input type="file" id="resume-upload" accept=".pdf,.docx,.txt" multiple hidden />
+        </label>
+        <div id="resume-file-list" class="resume-file-list"></div>
+        <div class="resume-search-row">
+          <input type="text" id="resume-location" placeholder="Location — e.g. Blackpool (optional)" />
+          <button type="submit" id="resume-search-btn" class="ghost" disabled>Find jobs from resumes</button>
+        </div>
+      </form>
+      <p class="hint">Extracts skills and suitable roles from each resume, then searches for matching jobs. Resumes are processed in memory only — never saved to disk.</p>
+      <div id="resume-profiles" class="resume-profiles"></div>
+
+      <form id="search-form" class="inline-form">
+        <input type="text" name="role" placeholder="Job title/role — e.g. IT support" />
+        <input type="text" name="keywords" placeholder="Keywords — e.g. remote, urgent" />
+        <input type="text" name="location" placeholder="Location — e.g. London" />
+        <select name="experience">
+          <option value="">Experience — any</option>
+          <option value="0-1 years">0-1 years</option>
+          <option value="1-2 years">1-2 years</option>
+          <option value="2-3 years">2-3 years</option>
+          <option value="3-5 years">3-5 years</option>
+          <option value="5-8 years">5-8 years</option>
+          <option value="8+ years">8+ years</option>
+        </select>
+        <button type="submit">Search</button>
+      </form>
+      <label class="check-inline">
+        <input type="checkbox" id="include-sent" />
+        Show jobs already sent before
+      </label>
+      <p class="hint" id="search-meta">Search to see results here.</p>
+      <ul id="job-results" class="jobs selectable"></ul>
+    </section>
+
+    <section class="card">
+      <h2>3 — Recipients</h2>
+
+      <div class="recipient-add">
+        <input type="text" id="single-name" placeholder="Name (optional)" />
+        <input type="email" id="single-email" placeholder="add-one@example.com" />
+        <button id="add-single" class="ghost">Add</button>
+      </div>
+
+      <div class="recipient-bulk">
+        <label>
+          Paste a list <span class="hint">one per line — "email" or "email, name"</span>
+          <textarea id="bulk-emails" rows="3" placeholder="jane@example.com, Jane Doe&#10;john@example.com"></textarea>
+        </label>
+        <div class="bulk-actions">
+          <button id="add-bulk" class="ghost">Add pasted list</button>
+          <label class="file-btn">
+            Upload .csv / .txt
+            <input type="file" id="file-upload" accept=".csv,.txt" hidden />
+          </label>
+        </div>
+      </div>
+
+      <p class="hint" id="recipients-meta">No recipients yet.</p>
+      <ul id="recipients-list" class="recipients"></ul>
+    </section>
+
+    <section class="card">
+      <h2>4 — Send</h2>
+      <form id="send-form">
+        <button type="submit" id="send-btn">Send to everyone on the list</button>
+        <p class="form-status" id="send-status"></p>
+      </form>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    Everyone on the recipient list gets the same email template — the job list itself is trimmed per person so no one ever receives the same posting twice.
+  </footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

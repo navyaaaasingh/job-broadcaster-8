@@ -1,0 +1,500 @@
+/* ============================================================
+   Job Broadcaster — "Wire Dispatch" theme (light)
+   A dispatch console sending job bulletins out over a signal —
+   teletype paper, amber signal ink, wire-bulletin job listings.
+   ============================================================ */
+
+:root {
+  --bg: #F2EFE6;          /* pale teletype-paper ivory */
+  --panel: #FBF9F3;       /* card/panel surface, slightly lighter */
+  --panel-raised: #FFFFFF;/* inputs — the cleanest surface */
+  --ink: #231F16;         /* warm near-black, teletype ink */
+  --ink-soft: #6B6355;    /* muted warm gray-brown for secondary text */
+  --line: #D8D2C0;        /* soft warm border */
+  --signal-text: #8A5209; /* darkened amber/ochre — used for TEXT (headings, links) */
+  --signal-fill: #E8A23C; /* brighter amber — used for solid FILLS (buttons) */
+  --signal-dim: #EFD8A0;  /* pale amber, badge backgrounds */
+  --success: #3F7A57;     /* muted sage, confirmation states only */
+  --danger: #B84A38;      /* warm brick-red, errors only */
+  --radius: 3px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 900px 500px at 50% -10%, rgba(138, 82, 9, 0.05), transparent);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.wrap {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.mark {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-raised);
+  border: 1px solid var(--signal-text);
+  color: var(--signal-text);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius);
+}
+
+/* Signature element: an "on air" signal lamp — the one place this
+   design spends its boldness. Subtle, not a light show. */
+.mark::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--signal-fill);
+  box-shadow: 0 0 6px 1px rgba(232, 162, 60, 0.6);
+  animation: pulse-signal 2.4s ease-in-out infinite;
+}
+@keyframes pulse-signal {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mark::after { animation: none; }
+}
+
+.head h1 {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 3px;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+
+.sub {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+.step {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.grid.single {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+.card h2 {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--line);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--signal-text);
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.inline-form input,
+.inline-form select {
+  flex: 1;
+  min-width: 140px;
+}
+.inline-form button { flex-shrink: 0; }
+
+.check-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin: 12px 0;
+  font-family: -apple-system, sans-serif;
+  text-transform: none;
+}
+.check-inline input { width: 15px; height: 15px; accent-color: var(--signal-fill); }
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  margin-bottom: 12px;
+}
+
+.hint {
+  text-transform: none;
+  font-family: -apple-system, sans-serif;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: normal;
+  margin: 0 0 10px;
+}
+
+input[type="email"],
+input[type="text"],
+select,
+textarea {
+  font-family: -apple-system, sans-serif;
+  font-size: 14.5px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  color: var(--ink);
+  width: 100%;
+}
+textarea { resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--ink-soft); opacity: 0.8; }
+
+select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: var(--panel-raised);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%236B6355'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 28px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: 2px solid var(--signal-fill);
+  outline-offset: 1px;
+}
+
+button {
+  font-family: ui-monospace, monospace;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 11px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--signal-fill);
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.15s ease;
+}
+button:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--signal-text); }
+button:active { transform: translateY(0); }
+button:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+
+button.ghost {
+  background: transparent;
+  border: 1px solid var(--signal-text);
+  color: var(--signal-text);
+  padding: 8px 14px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+button.ghost:hover { background: var(--signal-dim); }
+
+.form-status {
+  min-height: 16px;
+  font-size: 13px;
+  margin: 10px 0 0;
+  font-family: ui-monospace, monospace;
+}
+.form-status.ok { color: var(--success); }
+.form-status.err { color: var(--danger); }
+
+.jobs, .recipients {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+/* Job listings read like wire dispatches — a torn ticket edge on the
+   left, monospace metadata, like something that just came off the wire. */
+.job {
+  border: 1px solid var(--line);
+  border-left: 3px dashed var(--signal-text);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  background: var(--panel-raised);
+}
+.job-already-sent {
+  opacity: 0.55;
+  border-left-color: var(--ink-soft);
+  border-left-style: solid;
+}
+
+.job-select {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  text-transform: none;
+  font-family: -apple-system, sans-serif;
+  cursor: pointer;
+  margin: 0;
+}
+.job-select input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--signal-fill);
+}
+
+.job-title { font-weight: 700; font-size: 14px; color: var(--ink); }
+
+.job-link {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--signal-text);
+  text-decoration: none;
+  margin-left: 8px;
+  white-space: nowrap;
+}
+.job-link:hover { text-decoration: underline; }
+
+.job-desc {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.already-sent-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--line);
+  color: var(--ink-soft);
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.job-meta {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.job-source {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--signal-dim);
+  color: var(--signal-text);
+  margin-right: 6px;
+}
+
+.job-group-header {
+  list-style: none;
+  font-family: ui-monospace, monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  padding: 6px 2px 2px;
+  margin-top: 4px;
+  border-bottom: 1px dashed var(--line);
+}
+.job-group-header:first-child { margin-top: 0; }
+
+.empty {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  padding: 16px 0;
+  text-align: center;
+  list-style: none;
+  font-family: ui-monospace, monospace;
+}
+
+.recipient-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.recipient-bulk textarea { margin-top: 4px; }
+.bulk-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 10px 0 16px;
+}
+.file-btn {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 1px dashed var(--line);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+.file-btn:hover { border-color: var(--signal-text); color: var(--signal-text); }
+
+.recipient {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  font-size: 13.5px;
+}
+.remove-recipient {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+#send-form {
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+#send-btn {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 13px;
+}
+
+.foot {
+  margin-top: 32px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: center;
+  font-family: ui-monospace, monospace;
+}
+
+/* ---- Resume upload search ---- */
+
+.resume-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.resume-file-btn {
+  align-self: flex-start;
+  margin: 0;
+}
+
+.resume-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.resume-file-chip {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 2px;
+  background: var(--signal-dim);
+  color: var(--signal-text);
+}
+
+.resume-search-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.resume-search-row input { flex: 1; min-width: 140px; }
+.resume-search-row button { flex-shrink: 0; }
+
+.resume-profiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0;
+}
+.resume-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-raised);
+  font-size: 13.5px;
+}
+.resume-profile strong { color: var(--signal-text); }
+.resume-profile-error {
+  border-color: var(--danger);
+  color: var(--danger);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
