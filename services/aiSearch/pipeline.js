@@ -13,7 +13,7 @@ const { extractJobsFromPage } = require('./jobExtractor');
  * Every step degrades gracefully rather than throwing: a failed render or
  * extraction for one page just means fewer results, not a broken search.
  */
-async function runAiSearchPipeline(prompt, { maxPages = 6 } = {}) {
+async function runAiSearchPipeline(prompt, { maxPages = 8 } = {}) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error('GEMINI_API_KEY not set — AI search is not configured.');
   }
@@ -24,7 +24,7 @@ async function runAiSearchPipeline(prompt, { maxPages = 6 } = {}) {
   const queries = await planSearchQueries(prompt);
   if (queries.length === 0) return [];
 
-  const candidates = await searchMultiple(queries, { maxResultsPerQuery: 5 });
+  const candidates = await searchMultiple(queries, { maxResultsPerQuery: 6 });
   const toRender = candidates.slice(0, maxPages);
   if (toRender.length === 0) return [];
 
@@ -35,13 +35,15 @@ async function runAiSearchPipeline(prompt, { maxPages = 6 } = {}) {
   );
   const allJobs = extractedPerPage.flat();
 
-  // Dedupe by URL — the same posting can legitimately show up from
-  // multiple search queries.
-  const byUrl = new Map();
+  // Dedupe by URL + title together — not URL alone. If extraction falls
+  // back to a listing page's own URL for several distinct jobs on it
+  // (couldn't find each one's specific apply link), keying on URL alone
+  // would silently collapse all of them into a single result.
+  const byKey = new Map();
   for (const job of allJobs) {
-    if (job.url && job.title) byUrl.set(job.url, job);
+    if (job.url && job.title) byKey.set(`${job.url}::${job.title.toLowerCase()}`, job);
   }
-  return [...byUrl.values()];
+  return [...byKey.values()];
 }
 
 module.exports = { runAiSearchPipeline, closeBrowser };
