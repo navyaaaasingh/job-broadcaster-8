@@ -250,6 +250,13 @@ router.post('/ai-search/resumes', resumeUpload.array('resumes', 10), async (req,
       .map((r, i) => (r.status === 'rejected' ? { fileName: files[i].originalname, error: r.reason.message } : null))
       .filter(Boolean);
 
+    // Log each failure individually — these were previously only caught by
+    // Promise.allSettled and returned in the response body, never logged
+    // server-side, making them invisible in Render's logs when debugging.
+    for (const f of failed) {
+      console.error(`[ai-search/resumes] Failed to process "${f.fileName}":`, f.error);
+    }
+
     if (profiles.length === 0) {
       return res.status(400).json({ error: 'Could not process any of the uploaded resumes.', failed });
     }
