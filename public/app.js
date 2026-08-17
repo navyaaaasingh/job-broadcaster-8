@@ -82,7 +82,14 @@ resumeSearchForm.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/ai-search/resumes', { method: 'POST', body: formData });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Resume search failed.');
+
+    if (!res.ok) {
+      let message = data.error || 'Resume search failed.';
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        message += ' — ' + data.failed.map((f) => `${f.fileName}: ${f.error}`).join('; ');
+      }
+      throw new Error(message);
+    }
 
     renderResumeProfiles(data.profiles, data.failed);
     searchMeta.textContent = `${data.count} result(s) based on ${data.profiles.length} resume(s).`;
