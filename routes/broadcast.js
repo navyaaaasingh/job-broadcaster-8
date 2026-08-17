@@ -5,7 +5,7 @@ const { fetchReedJobs } = require('../services/fetchers/reed');
 const { fetchJoobleJobs } = require('../services/fetchers/jooble');
 const { fetchWebExtractedJobs } = require('../services/webExtract');
 const { runAiSearchPipeline } = require('../services/aiSearch/pipeline');
-const { processResumeFile, buildCombinedSearchPrompt } = require('../services/aiSearch/resumeParser');
+const { processResumeFile } = require('../services/aiSearch/resumeParser');
 const { storeJobs, getJobsByIds } = require('../services/jobCache');
 const recipients = require('../services/recipients');
 const sentJobs = require('../services/sentJobs');
@@ -219,8 +219,13 @@ router.post('/ai-search', async (req, res) => {
 /**
  * Resume-driven search: accepts one or more resume files (PDF/DOCX/TXT),
  * extracts a job-search profile from each (skills, suitable roles,
- * experience level) via Gemini, merges them into one combined search
- * prompt, and runs it through the same AI search pipeline as /ai-search.
+ * experience level) via Gemini, then runs ONE search PER resume — not one
+ * merged search across all of them. A merged search dilutes relevance
+ * (e.g. 3 candidates' skills mashed into one over-long query tends to
+ * return fewer, less-targeted results) and caps total results at a single
+ * pipeline run's worth. Running one per resume gives each candidate their
+ * own properly-targeted search, and naturally surfaces more total jobs
+ * across a multi-resume upload.
  *
  * Resume content is never written to disk or logged — files exist only
  * in memory for the duration of this request, and the uploaded buffers
@@ -249,8 +254,20 @@ router.post('/ai-search/resumes', resumeUpload.array('resumes', 10), async (req,
       return res.status(400).json({ error: 'Could not process any of the uploaded resumes.', failed });
     }
 
-    const combinedPrompt = buildCombinedSearchPrompt(profiles, { extraPrompt, location });
-    let jobs = await runAiSearchPipeline(combinedPrompt);
+    const searchPrompts = profiles.map((p) =>
+      extraPrompt.trim() ? `${p.searchPrompt} ${extraPrompt.trim()}` : p.searchPrompt
+    );
+
+    const perProfileJobs = await Promise.all(searchPrompts.map((prompt) => runAiSearchPipeline(prompt)));
+
+    // Merge across all resumes, then dedupe — the same posting can
+    // legitimately be a good fit for more than one candidate.
+    let jobs = perProfileJobs.flat();
+    const byKey = new Map();
+    for (const job of jobs) {
+      if (job.url && job.title) byKey.set(`${job.url}::${job.title.toLowerCase()}`, job);
+    }
+    jobs = [...byKey.values()];
 
     const recipientEmails = recipients.listRecipients().map((r) => r.email);
     const totalBeforeFilter = jobs.length;
@@ -269,15 +286,16 @@ router.post('/ai-search/resumes', resumeUpload.array('resumes', 10), async (req,
       jobs,
       count: jobs.length,
       skippedAlreadySent: skippedCount,
-      profiles: profiles.map((p) => ({
+      profiles: profiles.map((p, i) => ({
         fileName: p.fileName,
         candidateName: p.candidateName,
         skills: p.skills,
         suggestedRoles: p.suggestedRoles,
         experienceLevel: p.experienceLevel,
+        jobsFound: perProfileJobs[i].length,
       })),
       failed,
-      searchPromptUsed: combinedPrompt,
+      searchPromptsUsed: searchPrompts,
     });
   } catch (err) {
     console.error('[ai-search/resumes] failed:', err.message);
