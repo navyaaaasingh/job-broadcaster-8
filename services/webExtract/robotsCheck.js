@@ -7,12 +7,14 @@ const robotsCache = new Map();
 async function getRobotsRules(origin) {
   if (robotsCache.has(origin)) return robotsCache.get(origin);
 
-  let disallowed = [];
+  // Parses both Allow and Disallow directives under the wildcard (*)
+  // user-agent block. Sites commonly combine a broad Disallow with a more
+  // specific Allow carve-out (e.g. "Disallow: /" + "Allow: /jobs/") — a
+  // parser that only reads Disallow would incorrectly block the whole
+  // site in that case, even though the site explicitly permits /jobs/.
+  const rules = [];
   try {
     const { data } = await axios.get(`${origin}/robots.txt`, { timeout: 5000 });
-    // Minimal parser: only look at the generic "*" user-agent block, and
-    // only care about Disallow rules — good enough for a permission check,
-    // not a full robots.txt spec implementation.
     let inWildcardBlock = false;
     for (const rawLine of data.split('\n')) {
       const line = rawLine.trim();
@@ -24,19 +26,50 @@ async function getRobotsRules(origin) {
         inWildcardBlock = false;
         continue;
       }
-      if (inWildcardBlock && /^disallow:/i.test(line)) {
-        const path = line.split(':').slice(1).join(':').trim();
-        if (path) disallowed.push(path);
+      if (!inWildcardBlock) continue;
+
+      const disallowMatch = line.match(/^disallow:\s*(.*)$/i);
+      if (disallowMatch) {
+        const path = disallowMatch[1].trim();
+        // An empty "Disallow:" means "nothing is disallowed" per spec —
+        // not "disallow the empty-string prefix" (which would match
+        // every path). Skip it rather than adding a rule for it.
+        if (path) rules.push({ type: 'disallow', path });
+        continue;
+      }
+      const allowMatch = line.match(/^allow:\s*(.*)$/i);
+      if (allowMatch) {
+        const path = allowMatch[1].trim();
+        if (path) rules.push({ type: 'allow', path });
       }
     }
   } catch (err) {
     // No robots.txt, or it failed to load — treat as "nothing disallowed"
     // rather than blocking the fetch on a network hiccup.
-    disallowed = [];
   }
 
-  robotsCache.set(origin, disallowed);
-  return disallowed;
+  robotsCache.set(origin, rules);
+  return rules;
+}
+
+/**
+ * Standard robots.txt resolution: the MOST SPECIFIC matching rule wins
+ * (longest matching path), regardless of whether it's Allow or Disallow.
+ * On an exact tie in length, Allow wins — this matches the de facto
+ * standard most crawlers (including Google's) follow, even though the
+ * original spec doesn't fully define tie-breaking.
+ */
+function isPathAllowed(pathname, rules) {
+  let best = null;
+  for (const rule of rules) {
+    if (!pathname.startsWith(rule.path)) continue;
+    const length = rule.path.length;
+    if (!best || length > best.length || (length === best.length && rule.type === 'allow')) {
+      best = { type: rule.type, length };
+    }
+  }
+  if (!best) return true; // no matching rule at all => allowed
+  return best.type === 'allow';
 }
 
 /** Returns true if fetching this URL is allowed by the site's robots.txt. */
@@ -48,8 +81,8 @@ async function isFetchAllowed(url) {
     return false;
   }
   const origin = `${parsed.protocol}//${parsed.host}`;
-  const disallowed = await getRobotsRules(origin);
-  return !disallowed.some((rule) => parsed.pathname.startsWith(rule));
+  const rules = await getRobotsRules(origin);
+  return isPathAllowed(parsed.pathname, rules);
 }
 
 module.exports = { isFetchAllowed };
