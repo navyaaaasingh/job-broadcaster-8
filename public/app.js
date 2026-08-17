@@ -105,6 +105,7 @@ function renderResumeProfiles(profiles, failed) {
       <strong>${p.candidateName || p.fileName}</strong>
       <span class="hint">${p.experienceLevel || 'experience unclear'} — suggested: ${p.suggestedRoles.join(', ') || 'n/a'}</span>
       <span class="hint">Skills: ${p.skills.join(', ') || 'none detected'}</span>
+      <span class="hint">${p.jobsFound ?? 0} job(s) found for this profile</span>
     `;
     resumeProfilesEl.appendChild(div);
   }
