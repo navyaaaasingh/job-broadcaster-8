@@ -2,6 +2,7 @@ const { planSearchQueries } = require('./queryPlanner');
 const { searchMultiple } = require('./tavilySearch');
 const { renderMultiple, closeBrowser } = require('./pageRenderer');
 const { extractJobsFromPage } = require('./jobExtractor');
+const { extractStructuredJobs } = require('../webExtract/structuredData');
 
 /**
  * Full pipeline: natural-language prompt -> optimized search queries
@@ -30,10 +31,38 @@ async function runAiSearchPipeline(prompt, { maxPages = 8 } = {}) {
 
   const rendered = await renderMultiple(toRender.map((c) => c.url));
 
-  const extractedPerPage = await Promise.all(
-    rendered.map(({ url, html }) => extractJobsFromPage(html, url, 'ai-search'))
+  // Extract sequentially, not with Promise.all — firing every page's
+  // extraction call simultaneously is exactly what was tripping Gemini's
+  // free-tier rate limit (a handful of pages here, times multiple
+  // concurrent searches elsewhere, easily bursts past requests/minute).
+  // Slower, but reliable — callGemini already retries transient 429s with
+  // backoff, but avoiding the burst in the first place is better than
+  // relying on retries to absorb it.
+  //
+  // For each page, try structured data (schema.org/JobPosting) FIRST —
+  // many job sites publish this specifically so it can be read without
+  // any AI involved. Only fall back to a Gemini call when nothing
+  // structured is present. This is the single biggest lever for staying
+  // under a free-tier rate limit: it skips the expensive step entirely
+  // on any page that already has clean data sitting in its HTML, rather
+  // than just making the Gemini call cheaper or more resilient.
+  let structuredHits = 0;
+  let aiFallbacks = 0;
+  const allJobs = [];
+  for (const { url, html } of rendered) {
+    const structured = extractStructuredJobs(html, url, 'ai-search');
+    if (structured.length > 0) {
+      structuredHits++;
+      allJobs.push(...structured);
+      continue;
+    }
+    aiFallbacks++;
+    const jobs = await extractJobsFromPage(html, url, 'ai-search');
+    allJobs.push(...jobs);
+  }
+  console.log(
+    `[aiSearch:pipeline] ${structuredHits} page(s) used structured data (no AI call), ${aiFallbacks} page(s) needed Gemini extraction.`
   );
-  const allJobs = extractedPerPage.flat();
 
   // Dedupe by URL + title together — not URL alone. If extraction falls
   // back to a listing page's own URL for several distinct jobs on it
