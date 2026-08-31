@@ -100,30 +100,55 @@ resumeSearchForm.addEventListener('submit', async (e) => {
     resumeSearchBtn.disabled = false;
   }
 });
-
 function renderResumeProfiles(profiles, failed) {
   resumeProfilesEl.innerHTML = '';
+
   if (!profiles || profiles.length === 0) return;
 
   for (const p of profiles) {
     const div = document.createElement('div');
     div.className = 'resume-profile';
+
+    const skillsText =
+      Array.isArray(p.topSkills) && p.topSkills.length > 0
+        ? p.topSkills.join(', ')
+        : 'none detected';
+
+    const rolesText =
+      Array.isArray(p.suggestedRoles) && p.suggestedRoles.length > 0
+        ? p.suggestedRoles.join(', ')
+        : 'n/a';
+
     div.innerHTML = `
       <strong>${p.candidateName || p.fileName}</strong>
-      <span class="hint">${p.experienceLevel || 'experience unclear'} — suggested: ${p.suggestedRoles.join(', ') || 'n/a'}</span>
-      <span class="hint">Skills: ${p.topSkills || 'none detected'}</span>
-      <span class="hint">${p.jobsFound ?? 0} job(s) found for this profile</span>
+
+      <span class="hint">
+        ${p.experienceLevel || 'experience unclear'}
+        — suggested: ${rolesText}
+      </span>
+
+      <span class="hint">
+        Skills: ${skillsText}
+      </span>
+
+      <span class="hint">
+        ${p.jobsFound ?? 0} job(s) found for this profile
+      </span>
     `;
+
     resumeProfilesEl.appendChild(div);
   }
+
   if (failed && failed.length > 0) {
     const div = document.createElement('div');
     div.className = 'resume-profile resume-profile-error';
-    div.textContent = `Could not process: ${failed.map((f) => f.fileName).join(', ')}`;
+
+    div.textContent =
+      `Could not process: ${failed.map((f) => f.fileName).join(', ')}`;
+
     resumeProfilesEl.appendChild(div);
   }
 }
-
 searchForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(searchForm);
