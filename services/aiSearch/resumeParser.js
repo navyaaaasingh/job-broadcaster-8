@@ -5,13 +5,8 @@ const { callGemini } = require('./geminiClient');
 /**
  * Extract raw text from an uploaded resume file.
  *
- * Supports:
- * - PDF
- * - DOCX
- * - TXT
- *
+ * Supports PDF, DOCX, and TXT.
  * Operates entirely on the in-memory buffer provided by multer.
- * Nothing is written to disk or logged by this module.
  */
 async function extractTextFromResume(buffer, filename) {
   const ext = (filename.split('.').pop() || '').toLowerCase();
@@ -36,26 +31,27 @@ async function extractTextFromResume(buffer, filename) {
 }
 
 /**
- * Ask Gemini to analyze ONE candidate's resume and create
- * a job-search-ready profile.
+ * Ask Gemini to analyze ONE candidate's resume.
  *
- * The response contains:
+ * Returns:
  * - Candidate name
  * - Top 5 skills
- * - Suggested job roles
+ * - Suggested roles
  * - Experience level
- * - Individual search query
+ * - Candidate-specific job search query
  *
- * Everything is generated in ONE Gemini call per candidate
- * to avoid unnecessary API usage.
+ * Uses ONE Gemini call per candidate.
  */
 async function extractProfileFromResume(
   resumeText,
   { location = '' } = {}
 ) {
-  // Limit the amount of resume text sent to Gemini.
-  // This helps control input token usage.
+  // Limit input size to control token usage.
   const truncated = resumeText.slice(0, 8000);
+
+  const locationInstruction = location
+    ? `- Include this location in the searchQuery: ${location}.`
+    : '';
 
   const prompt = `You are an AI job-search assistant.
 
@@ -95,8 +91,8 @@ Rules:
 - Skills can include technical skills, tools, technologies, frameworks, platforms, or highly relevant professional skills.
 - Prefer specific skills such as Python, SQL, React, AWS, Figma, Product Management, etc.
 - Do NOT invent skills that are not supported by the resume.
-- Do not return generic words such as "communication" unless they are genuinely among the strongest job-relevant skills and there are not enough technical/professional skills.
-- Rank the skills from strongest/most relevant to least relevant.
+- Avoid generic skills such as communication unless there are not enough relevant technical or professional skills.
+- Rank the skills from strongest and most relevant to least relevant.
 
 3. suggestedRoles
 - Return up to 4 realistic job titles.
@@ -118,13 +114,13 @@ Choose exactly ONE of:
 Estimate this from the candidate's actual professional experience, internships, and relevant work history.
 
 5. searchQuery
-Create ONE concise natural-language search query specifically for this candidate.
+Create ONE concise natural-language job search query specifically for this candidate.
 
 The search query MUST:
 - Reflect the candidate's suggested roles.
-- Include their strongest skills.
-- Reflect their experience level.
-${location ? `- Include this location: ${location}.` : ''}
+- Include the candidate's strongest skills.
+- Reflect the candidate's experience level.
+${locationInstruction}
 - Be suitable for searching job boards such as LinkedIn, Indeed, Naukri, or other job-search systems.
 - Do NOT create a generic query that could apply equally to every candidate.
 
@@ -145,7 +141,7 @@ Example:
     "Data Analyst"
   ],
   "experienceLevel": "0-1 years",
-  "searchQuery": "entry-level data scientist, machine learning engineer, or data analyst jobs requiring Python, SQL, Machine Learning, Pandas, and Scikit-learn${location ? ` in ${location}` : ''}"
+  "searchQuery": "entry-level data scientist, machine learning engineer, or data analyst jobs requiring Python, SQL, Machine Learning, Pandas, and Scikit-learn"
 }
 
 Resume text:
@@ -162,10 +158,13 @@ ${truncated}
   try {
     profile = JSON.parse(response);
   } catch (error) {
-    throw new Error('Gemini returned an invalid JSON response.');
-  }
+    console.error('Gemini JSON parsing error:', error);
+    console.error('Gemini response:', response);
 
-  // Normalize and validate the response.
+    throw new Error(
+      'Gemini returned an invalid JSON response.'
+    );
+  }
 
   const topSkills = Array.isArray(profile.topSkills)
     ? profile.topSkills
@@ -210,18 +209,16 @@ ${truncated}
 }
 
 /**
- * Full per-resume processing pipeline.
+ * Full processing pipeline for ONE resume.
  *
- * Flow:
- *
- * Resume file
- *     ↓
+ * Resume
+ *   ↓
  * Extract text
- *     ↓
- * Gemini analysis
- *     ↓
- * Candidate-specific structured profile
- *     ↓
+ *   ↓
+ * Gemini
+ *   ↓
+ * Candidate profile
+ *   ↓
  * Candidate-specific search query
  */
 async function processResumeFile(
@@ -254,36 +251,13 @@ async function processResumeFile(
 /**
  * Process multiple resumes independently.
  *
- * IMPORTANT:
- * Each candidate gets their OWN profile and search query.
+ * Each candidate gets:
+ * - Their own top 5 skills
+ * - Their own suggested roles
+ * - Their own experience level
+ * - Their own search query
  *
- * Example result:
- *
- * [
- *   {
- *     fileName: "candidate1.pdf",
- *     candidateName: "Aisha",
- *     topSkills: [...],
- *     suggestedRoles: [...],
- *     experienceLevel: "0-1 years",
- *     searchQuery: "..."
- *   },
- *   {
- *     fileName: "candidate2.pdf",
- *     candidateName: "Rahul",
- *     topSkills: [...],
- *     suggestedRoles: [...],
- *     experienceLevel: "1-2 years",
- *     searchQuery: "..."
- *   }
- * ]
- *
- * Promise.all allows the resumes to be processed concurrently.
- *
- * NOTE:
- * If you upload a very large number of resumes at once,
- * consider adding concurrency limiting to avoid hitting
- * Gemini RPM limits.
+ * Each resume requires ONE Gemini call.
  */
 async function processMultipleResumes(
   resumes,
@@ -306,4 +280,3 @@ module.exports = {
   processResumeFile,
   processMultipleResumes
 };
-```
