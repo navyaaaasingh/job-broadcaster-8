@@ -109,33 +109,39 @@ function renderResumeProfiles(profiles, failed) {
     const div = document.createElement('div');
     div.className = 'resume-profile';
 
-    const skillsText =
-      Array.isArray(p.topSkills) && p.topSkills.length > 0
-        ? p.topSkills.join(', ')
-        : 'none detected';
+    ```js
+const skills = Array.isArray(p.topSkills)
+  ? p.topSkills
+  : Array.isArray(p.skills)
+    ? p.skills
+    : [];
 
-    const rolesText =
-      Array.isArray(p.suggestedRoles) && p.suggestedRoles.length > 0
-        ? p.suggestedRoles.join(', ')
-        : 'n/a';
+const skillsText = skills.length > 0
+  ? skills.join(', ')
+  : 'none detected';
 
-    div.innerHTML = `
-      <strong>${p.candidateName || p.fileName}</strong>
+const rolesText = Array.isArray(p.suggestedRoles)
+  && p.suggestedRoles.length > 0
+  ? p.suggestedRoles.join(', ')
+  : 'n/a';
 
-      <span class="hint">
-        ${p.experienceLevel || 'experience unclear'}
-        — suggested: ${rolesText}
-      </span>
+div.innerHTML = `
+  <strong>${p.candidateName || p.fileName}</strong>
 
-      <span class="hint">
-        Skills: ${skillsText}
-      </span>
+  <span class="hint">
+    ${p.experienceLevel || 'experience unclear'}
+    — suggested: ${rolesText}
+  </span>
 
-      <span class="hint">
-        ${p.jobsFound ?? 0} job(s) found for this profile
-      </span>
-    `;
+  <span class="hint">
+    Skills: ${skillsText}
+  </span>
 
+  <span class="hint">
+    ${p.jobsFound ?? 0} job(s) found for this profile
+  </span>
+`;
+```
     resumeProfilesEl.appendChild(div);
   }
 
