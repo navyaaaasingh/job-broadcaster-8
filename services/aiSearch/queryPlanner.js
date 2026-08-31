@@ -1,39 +1,102 @@
 const { callGemini } = require('./geminiClient');
 
 /**
- * Convert a free-text prompt like "Software Engineering internships in UK"
- * into a small set of optimized search-engine queries. Splitting into a
- * few varied phrasings (rather than searching the raw prompt verbatim)
- * tends to surface more relevant, less redundant results from a general
- * web search than one literal query would.
+ * Convert a candidate's search request into several broad,
+ * complementary web-search queries.
  *
- * Falls back to using the raw prompt as a single query if Gemini isn't
- * configured or the call fails — this step should never be a hard
- * blocker for the rest of the pipeline.
+ * IMPORTANT:
+ * Queries are designed primarily around job titles/roles.
+ * Candidate skills are used as supporting context, but should
+ * NOT become mandatory requirements for every search.
+ *
+ * This prevents qualified jobs from being excluded simply
+ * because a job description does not mention every candidate skill.
  */
-async function planSearchQueries(prompt, { maxQueries = 4 } = {}) {
+async function planSearchQueries(prompt, { maxQueries = 5 } = {}) {
   const clean = (prompt || '').trim();
+
   if (!clean) return [];
 
   try {
-    const instruction = `You are helping search for real job/internship postings. Given this request:
+    const instruction = `You are an expert job-search query planner.
+
+Candidate job-search request:
 
 "${clean}"
 
-Generate up to ${maxQueries} distinct, effective web search queries that would surface actual job listing pages or company career pages matching this request. Vary the phrasing (e.g. different job title synonyms, "careers" vs "jobs" vs "vacancies", with/without location). Do not include linkedin.com or indeed.com in the queries — those are excluded from this pipeline.
+Generate up to ${maxQueries} complementary web search queries that are likely to find REAL job or internship postings.
 
-Return ONLY a JSON array of strings, nothing else. Example: ["software engineering internship UK", "graduate software engineer jobs UK careers"]`;
+Search strategy:
 
-    const response = await callGemini(instruction, { jsonMode: true });
+1. Prioritize the candidate's most realistic target JOB TITLES.
+2. Use role synonyms and closely related titles.
+3. Keep searches broad enough to discover relevant openings.
+4. Do NOT require every candidate skill to appear in the search query.
+5. Skills should be used selectively as supporting context when useful.
+6. Account for the candidate's experience level.
+7. Preserve the candidate's location when one is provided.
+8. Include a mixture of:
+   - exact role searches
+   - role synonym searches
+   - entry-level/graduate variants when appropriate
+   - closely related roles when appropriate
+9. Search for actual job postings, company career pages, vacancies, openings, internships, or graduate roles.
+10. Do not search LinkedIn or Indeed.
+11. Do not include linkedin.com or indeed.com in queries.
+12. Do not create duplicate or nearly identical queries.
+
+IMPORTANT:
+Do NOT create highly restrictive queries containing every skill.
+For example, avoid queries like:
+"Product Manager Python SQL RAG Pandas MongoDB"
+
+Prefer:
+"Associate Product Manager jobs"
+"AI Product Manager jobs"
+"Junior Product Manager jobs"
+
+Return ONLY a valid JSON array of strings.
+
+Example:
+[
+  "associate product manager jobs",
+  "junior product manager jobs",
+  "AI product manager jobs",
+  "product management graduate jobs",
+  "product analyst jobs"
+]`;
+
+    const response = await callGemini(instruction, {
+      jsonMode: true
+    });
+
     const queries = JSON.parse(response);
+
     if (Array.isArray(queries) && queries.length > 0) {
-      return queries.slice(0, maxQueries).map(String);
+      return queries
+        .filter(
+          (query) =>
+            typeof query === 'string' &&
+            query.trim().length > 0
+        )
+        .map((query) => query.trim())
+        .filter(
+          (query, index, array) =>
+            array.indexOf(query) === index
+        )
+        .slice(0, maxQueries);
     }
   } catch (err) {
-    console.warn('[aiSearch:queryPlanner] Falling back to raw prompt:', err.message);
+    console.warn(
+      '[aiSearch:queryPlanner] Falling back to raw prompt:',
+      err.message
+    );
   }
 
+  // If Gemini fails, the raw candidate query is still usable.
   return [clean];
 }
 
-module.exports = { planSearchQueries };
+module.exports = {
+  planSearchQueries
+};
