@@ -3,10 +3,14 @@ const mammoth = require('mammoth');
 const { callGemini } = require('./geminiClient');
 
 /**
- * Extract raw text from an uploaded resume file.
+ * Extract raw text from an uploaded resume.
  *
- * Supports PDF, DOCX, and TXT.
- * Operates entirely on the in-memory buffer provided by multer.
+ * Supports:
+ * - PDF
+ * - DOCX
+ * - TXT
+ *
+ * Everything is processed in memory.
  */
 async function extractTextFromResume(buffer, filename) {
   const ext = (filename.split('.').pop() || '').toLowerCase();
@@ -31,121 +35,62 @@ async function extractTextFromResume(buffer, filename) {
 }
 
 /**
- * Ask Gemini to analyze ONE candidate's resume.
+ * Extract a structured job-search profile from ONE resume.
  *
- * Returns:
- * - Candidate name
- * - Top 5 skills
- * - Suggested roles
- * - Experience level
- * - Candidate-specific job search query
- *
- * Uses ONE Gemini call per candidate.
+ * IMPORTANT:
+ * This makes exactly ONE Gemini request per candidate.
  */
 async function extractProfileFromResume(
   resumeText,
   { location = '' } = {}
 ) {
-  // Limit input size to control token usage.
-  const truncated = resumeText.slice(0, 8000);
+  /*
+   * Keep the resume input reasonably small.
+   *
+   * 6000 characters is enough for most resumes while
+   * reducing Gemini input-token usage.
+   */
+  const truncated = resumeText.slice(0, 6000);
 
   const locationInstruction = location
-    ? `- Include this location in the searchQuery: ${location}.`
+    ? `Location for job search: ${location}`
     : '';
 
-  const prompt = `You are an AI job-search assistant.
+  const prompt = `Analyze this resume and create a job-search profile for this candidate.
 
-Analyze the candidate's resume below and create a structured job-search profile specifically for THIS candidate.
+Return ONLY valid JSON.
 
-Return ONLY a valid JSON object with exactly these fields:
-
+Required format:
 {
-  "candidateName": string or null,
-  "topSkills": [
-    "skill 1",
-    "skill 2",
-    "skill 3",
-    "skill 4",
-    "skill 5"
-  ],
-  "suggestedRoles": [
-    "job title 1",
-    "job title 2",
-    "job title 3",
-    "job title 4"
-  ],
-  "experienceLevel": "0-1 years",
-  "searchQuery": "single natural-language job search query"
+  "candidateName": null,
+  "topSkills": [],
+  "suggestedRoles": [],
+  "experienceLevel": "",
+  "searchQuery": ""
 }
 
 Rules:
 
-1. candidateName
-- Extract the candidate's name from the resume header if available.
-- If the name is unclear, return null.
-- Do not invent a name.
+- candidateName: candidate's name if clearly visible, otherwise null.
+- topSkills: EXACTLY 5 strongest job-relevant skills supported by the resume.
+- Do not invent skills.
+- suggestedRoles: up to 4 realistic job titles based on the candidate's experience.
+- Match job titles to the candidate's actual seniority.
+- For freshers, prefer entry-level, graduate, junior, or internship roles.
+- experienceLevel must be exactly one of:
+  "0-1 years",
+  "1-2 years",
+  "2-3 years",
+  "3-5 years",
+  "5-8 years",
+  "8+ years"
+- searchQuery: ONE concise search query specifically for this candidate.
+- The search query should combine the most relevant roles, top skills, experience level, and location when provided.
+- Do not create a generic query.
 
-2. topSkills
-- Return EXACTLY 5 skills whenever the resume contains enough information.
-- Select the 5 strongest and most job-relevant skills.
-- Skills can include technical skills, tools, technologies, frameworks, platforms, or highly relevant professional skills.
-- Prefer specific skills such as Python, SQL, React, AWS, Figma, Product Management, etc.
-- Do NOT invent skills that are not supported by the resume.
-- Avoid generic skills such as communication unless there are not enough relevant technical or professional skills.
-- Rank the skills from strongest and most relevant to least relevant.
-
-3. suggestedRoles
-- Return up to 4 realistic job titles.
-- Base these on the candidate's actual resume.
-- Match the candidate's experience and seniority.
-- Do not recommend senior roles to candidates without sufficient experience.
-- For freshers, prefer entry-level, graduate, associate, junior, or internship roles where appropriate.
-- Do not invent an unrelated career path.
-
-4. experienceLevel
-Choose exactly ONE of:
-- "0-1 years"
-- "1-2 years"
-- "2-3 years"
-- "3-5 years"
-- "5-8 years"
-- "8+ years"
-
-Estimate this from the candidate's actual professional experience, internships, and relevant work history.
-
-5. searchQuery
-Create ONE concise natural-language job search query specifically for this candidate.
-
-The search query MUST:
-- Reflect the candidate's suggested roles.
-- Include the candidate's strongest skills.
-- Reflect the candidate's experience level.
 ${locationInstruction}
-- Be suitable for searching job boards such as LinkedIn, Indeed, Naukri, or other job-search systems.
-- Do NOT create a generic query that could apply equally to every candidate.
 
-Example:
-
-{
-  "candidateName": "Rahul Sharma",
-  "topSkills": [
-    "Python",
-    "SQL",
-    "Machine Learning",
-    "Pandas",
-    "Scikit-learn"
-  ],
-  "suggestedRoles": [
-    "Junior Data Scientist",
-    "Machine Learning Engineer",
-    "Data Analyst"
-  ],
-  "experienceLevel": "0-1 years",
-  "searchQuery": "entry-level data scientist, machine learning engineer, or data analyst jobs requiring Python, SQL, Machine Learning, Pandas, and Scikit-learn"
-}
-
-Resume text:
-
+Resume:
 ${truncated}
 `;
 
@@ -158,14 +103,17 @@ ${truncated}
   try {
     profile = JSON.parse(response);
   } catch (error) {
-    console.error('Gemini JSON parsing error:', error);
-    console.error('Gemini response:', response);
+    console.error('[resume-parser] Invalid Gemini JSON response');
+    console.error(response);
 
     throw new Error(
-      'Gemini returned an invalid JSON response.'
+      'Gemini returned an invalid profile response.'
     );
   }
 
+  /*
+   * Normalize skills.
+   */
   const topSkills = Array.isArray(profile.topSkills)
     ? profile.topSkills
         .filter(
@@ -173,9 +121,13 @@ ${truncated}
             typeof skill === 'string' &&
             skill.trim().length > 0
         )
+        .map((skill) => skill.trim())
         .slice(0, 5)
     : [];
 
+  /*
+   * Normalize suggested roles.
+   */
   const suggestedRoles = Array.isArray(profile.suggestedRoles)
     ? profile.suggestedRoles
         .filter(
@@ -183,43 +135,68 @@ ${truncated}
             typeof role === 'string' &&
             role.trim().length > 0
         )
+        .map((role) => role.trim())
         .slice(0, 4)
     : [];
 
+  /*
+   * Candidate name.
+   */
+  const candidateName =
+    typeof profile.candidateName === 'string' &&
+    profile.candidateName.trim().length > 0
+      ? profile.candidateName.trim()
+      : null;
+
+  /*
+   * Experience level.
+   */
+  const validExperienceLevels = [
+    '0-1 years',
+    '1-2 years',
+    '2-3 years',
+    '3-5 years',
+    '5-8 years',
+    '8+ years'
+  ];
+
+  const experienceLevel =
+    validExperienceLevels.includes(profile.experienceLevel)
+      ? profile.experienceLevel
+      : null;
+
+  /*
+   * Search query.
+   */
+  const searchQuery =
+    typeof profile.searchQuery === 'string'
+      ? profile.searchQuery.trim()
+      : '';
+
+  /*
+   * Return both topSkills and skills.
+   *
+   * "skills" is kept temporarily for backwards compatibility
+   * with your existing frontend code.
+   */
   return {
-    candidateName:
-      typeof profile.candidateName === 'string'
-        ? profile.candidateName.trim()
-        : null,
+    candidateName,
 
     topSkills,
 
+    // Backwards compatibility:
+    skills: topSkills,
+
     suggestedRoles,
 
-    experienceLevel:
-      typeof profile.experienceLevel === 'string'
-        ? profile.experienceLevel
-        : null,
+    experienceLevel,
 
-    searchQuery:
-      typeof profile.searchQuery === 'string'
-        ? profile.searchQuery.trim()
-        : ''
+    searchQuery
   };
 }
 
 /**
- * Full processing pipeline for ONE resume.
- *
- * Resume
- *   ↓
- * Extract text
- *   ↓
- * Gemini
- *   ↓
- * Candidate profile
- *   ↓
- * Candidate-specific search query
+ * Process ONE uploaded resume.
  */
 async function processResumeFile(
   buffer,
@@ -249,29 +226,44 @@ async function processResumeFile(
 }
 
 /**
- * Process multiple resumes independently.
+ * Process multiple resumes.
  *
- * Each candidate gets:
- * - Their own top 5 skills
- * - Their own suggested roles
- * - Their own experience level
- * - Their own search query
+ * Resumes are processed in small batches instead of all
+ * at once to reduce the chance of hitting Gemini rate limits.
  *
- * Each resume requires ONE Gemini call.
+ * Three Gemini requests are allowed concurrently.
  */
 async function processMultipleResumes(
   resumes,
   { location = '' } = {}
 ) {
-  return Promise.all(
-    resumes.map((resume) =>
-      processResumeFile(
-        resume.buffer,
-        resume.originalname || resume.filename,
-        { location }
+  const results = [];
+  const CONCURRENCY = 3;
+
+  for (
+    let i = 0;
+    i < resumes.length;
+    i += CONCURRENCY
+  ) {
+    const batch = resumes.slice(
+      i,
+      i + CONCURRENCY
+    );
+
+    const batchResults = await Promise.all(
+      batch.map((resume) =>
+        processResumeFile(
+          resume.buffer,
+          resume.originalname || resume.filename,
+          { location }
+        )
       )
-    )
-  );
+    );
+
+    results.push(...batchResults);
+  }
+
+  return results;
 }
 
 module.exports = {
