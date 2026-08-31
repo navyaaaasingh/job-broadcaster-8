@@ -53,7 +53,7 @@ aiSearchForm.addEventListener('submit', async (e) => {
   }
 });
 
-// ---------- Resume upload search ----------
+// ---------- Resume upload search ----------  
 
 resumeUploadInput.addEventListener('change', () => {
   const files = [...resumeUploadInput.files];
@@ -111,7 +111,7 @@ function renderResumeProfiles(profiles, failed) {
     div.innerHTML = `
       <strong>${p.candidateName || p.fileName}</strong>
       <span class="hint">${p.experienceLevel || 'experience unclear'} — suggested: ${p.suggestedRoles.join(', ') || 'n/a'}</span>
-      <span class="hint">Skills: ${p.skills.join(', ') || 'none detected'}</span>
+      <span class="hint">Skills: ${p.topSkills || 'none detected'}</span>
       <span class="hint">${p.jobsFound ?? 0} job(s) found for this profile</span>
     `;
     resumeProfilesEl.appendChild(div);
