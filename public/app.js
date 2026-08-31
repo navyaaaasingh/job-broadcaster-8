@@ -109,7 +109,6 @@ function renderResumeProfiles(profiles, failed) {
     const div = document.createElement('div');
     div.className = 'resume-profile';
 
-    ```js
 const skills = Array.isArray(p.topSkills)
   ? p.topSkills
   : Array.isArray(p.skills)
@@ -141,7 +140,6 @@ div.innerHTML = `
     ${p.jobsFound ?? 0} job(s) found for this profile
   </span>
 `;
-```
     resumeProfilesEl.appendChild(div);
   }
 
