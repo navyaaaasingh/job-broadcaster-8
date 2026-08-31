@@ -15,7 +15,7 @@ async function callGeminiOnce(model, prompt, jsonMode, apiKey) {
   }
 
   const { data } = await axios.post(url, body, {
-    timeout: 30000,
+    timeout: 60000,
     headers: {
       'x-goog-api-key': apiKey,
       'Content-Type': 'application/json',
