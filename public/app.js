@@ -1,14 +1,15 @@
 const searchForm = document.getElementById('search-form');
 const aiSearchForm = document.getElementById('ai-search-form');
 const searchMeta = document.getElementById('search-meta');
+const includeSentCheckbox = document.getElementById('include-sent');
+const jobResults = document.getElementById('job-results');
+
 const resumeSearchForm = document.getElementById('resume-search-form');
 const resumeUploadInput = document.getElementById('resume-upload');
 const resumeFileList = document.getElementById('resume-file-list');
 const resumeLocationInput = document.getElementById('resume-location');
 const resumeSearchBtn = document.getElementById('resume-search-btn');
 const resumeProfilesEl = document.getElementById('resume-profiles');
-const jobResults = document.getElementById('job-results');
-const includeSentCheckbox = document.getElementById('include-sent');
 
 const singleNameInput = document.getElementById('single-name');
 const singleEmailInput = document.getElementById('single-email');
@@ -24,6 +25,27 @@ const sendStatus = document.getElementById('send-status');
 const sendBtn = document.getElementById('send-btn');
 
 let selectedJobIds = new Set();
+
+// ---------- Search method tabs ----------
+
+const searchTabs = document.querySelectorAll('.search-tab');
+const searchPanels = document.querySelectorAll('.search-tab-panel');
+
+searchTabs.forEach((tab) => {
+  tab.addEventListener('click', () => {
+    searchTabs.forEach((t) => {
+      t.classList.remove('active');
+      t.setAttribute('aria-selected', 'false');
+    });
+    tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
+
+    const target = tab.dataset.tab;
+    searchPanels.forEach((panel) => {
+      panel.hidden = panel.dataset.panel !== target;
+    });
+  });
+});
 
 // ---------- Step 1 & 2: search + select ----------
 
@@ -53,106 +75,6 @@ aiSearchForm.addEventListener('submit', async (e) => {
   }
 });
 
-// ---------- Resume upload search ----------  
-
-resumeUploadInput.addEventListener('change', () => {
-  const files = [...resumeUploadInput.files];
-  resumeFileList.innerHTML = files.map((f) => `<span class="resume-file-chip">${f.name}</span>`).join('');
-  resumeSearchBtn.disabled = files.length === 0;
-});
-
-resumeSearchForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const files = [...resumeUploadInput.files];
-  if (files.length === 0) return;
-
-  const location = resumeLocationInput.value.trim();
-  const includeSent = includeSentCheckbox.checked;
-
-  resumeSearchBtn.disabled = true;
-  searchMeta.textContent = `Reading ${files.length} resume(s) and searching for matching jobs — this takes a while…`;
-  jobResults.innerHTML = '';
-  resumeProfilesEl.innerHTML = '';
-
-  const formData = new FormData();
-  for (const file of files) formData.append('resumes', file);
-  formData.append('location', location);
-  formData.append('includeSent', String(includeSent));
-
-  try {
-    const res = await fetch('/api/ai-search/resumes', { method: 'POST', body: formData });
-    const data = await res.json();
-
-    if (!res.ok) {
-      let message = data.error || 'Resume search failed.';
-      if (Array.isArray(data.failed) && data.failed.length > 0) {
-        message += ' — ' + data.failed.map((f) => `${f.fileName}: ${f.error}`).join('; ');
-      }
-      throw new Error(message);
-    }
-
-    renderResumeProfiles(data.profiles, data.failed);
-    searchMeta.textContent = `${data.count} result(s) based on ${data.profiles.length} resume(s).`;
-    renderJobResults(data.jobs);
-  } catch (err) {
-    searchMeta.textContent = err.message;
-  } finally {
-    resumeSearchBtn.disabled = false;
-  }
-});
-function renderResumeProfiles(profiles, failed) {
-  resumeProfilesEl.innerHTML = '';
-
-  if (!profiles || profiles.length === 0) return;
-
-  for (const p of profiles) {
-    const div = document.createElement('div');
-    div.className = 'resume-profile';
-
-const skills = Array.isArray(p.topSkills)
-  ? p.topSkills
-  : Array.isArray(p.skills)
-    ? p.skills
-    : [];
-
-const skillsText = skills.length > 0
-  ? skills.join(', ')
-  : 'none detected';
-
-const rolesText = Array.isArray(p.suggestedRoles)
-  && p.suggestedRoles.length > 0
-  ? p.suggestedRoles.join(', ')
-  : 'n/a';
-
-div.innerHTML = `
-  <strong>${p.candidateName || p.fileName}</strong>
-
-  <span class="hint">
-    ${p.experienceLevel || 'experience unclear'}
-    — suggested: ${rolesText}
-  </span>
-
-  <span class="hint">
-    Skills: ${skillsText}
-  </span>
-
-  <span class="hint">
-    ${p.jobsFound ?? 0} job(s) found for this profile
-  </span>
-`;
-    resumeProfilesEl.appendChild(div);
-  }
-
-  if (failed && failed.length > 0) {
-    const div = document.createElement('div');
-    div.className = 'resume-profile resume-profile-error';
-
-    div.textContent =
-      `Could not process: ${failed.map((f) => f.fileName).join(', ')}`;
-
-    resumeProfilesEl.appendChild(div);
-  }
-}
 searchForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const fd = new FormData(searchForm);
@@ -245,6 +167,77 @@ function renderJobResults(jobs) {
       else selectedJobIds.delete(box.dataset.id);
     });
   });
+}
+
+// ---------- Resume upload search ----------
+
+resumeUploadInput.addEventListener('change', () => {
+  const files = [...resumeUploadInput.files];
+  resumeFileList.innerHTML = files.map((f) => `<span class="resume-file-chip">${f.name}</span>`).join('');
+  resumeSearchBtn.disabled = files.length === 0;
+});
+
+resumeSearchForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const files = [...resumeUploadInput.files];
+  if (files.length === 0) return;
+
+  const location = resumeLocationInput.value.trim();
+  const includeSent = includeSentCheckbox.checked;
+
+  resumeSearchBtn.disabled = true;
+  searchMeta.textContent = `Reading ${files.length} resume(s) and searching for matching jobs — this takes a while…`;
+  jobResults.innerHTML = '';
+  resumeProfilesEl.innerHTML = '';
+
+  const formData = new FormData();
+  for (const file of files) formData.append('resumes', file);
+  formData.append('location', location);
+  formData.append('includeSent', String(includeSent));
+
+  try {
+    const res = await fetch('/api/ai-search/resumes', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok) {
+      let message = data.error || 'Resume search failed.';
+      if (Array.isArray(data.failed) && data.failed.length > 0) {
+        message += ' — ' + data.failed.map((f) => `${f.fileName}: ${f.error}`).join('; ');
+      }
+      throw new Error(message);
+    }
+
+    renderResumeProfiles(data.profiles, data.failed);
+    searchMeta.textContent = `${data.count} result(s) based on ${data.profiles.length} resume(s).`;
+    renderJobResults(data.jobs);
+  } catch (err) {
+    searchMeta.textContent = err.message;
+  } finally {
+    resumeSearchBtn.disabled = false;
+  }
+});
+
+function renderResumeProfiles(profiles, failed) {
+  resumeProfilesEl.innerHTML = '';
+  if (!profiles || profiles.length === 0) return;
+
+  for (const p of profiles) {
+    const div = document.createElement('div');
+    div.className = 'resume-profile';
+    div.innerHTML = `
+      <strong>${p.candidateName || p.fileName}</strong>
+      <span class="hint">${p.experienceLevel || 'experience unclear'} — suggested: ${p.suggestedRoles.join(', ') || 'n/a'}</span>
+      <span class="hint">Top skills: ${(p.topSkills || []).join(', ') || 'none detected'}</span>
+      <span class="hint">${p.jobsFound ?? 0} job(s) found for this profile</span>
+    `;
+    resumeProfilesEl.appendChild(div);
+  }
+  if (failed && failed.length > 0) {
+    const div = document.createElement('div');
+    div.className = 'resume-profile resume-profile-error';
+    div.textContent = `Could not process: ${failed.map((f) => f.fileName).join(', ')}`;
+    resumeProfilesEl.appendChild(div);
+  }
 }
 
 // ---------- Step 3: recipients ----------
