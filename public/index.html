@@ -29,46 +29,57 @@
     <section class="card">
       <h2>1 &middot; 2 — Find &amp; select jobs</h2>
 
-      <form id="ai-search-form" class="inline-form">
-        <input type="text" name="prompt" placeholder='Or describe what you want — e.g. "Software Engineering internships in UK"' />
-        <button type="submit" class="ghost">AI Search</button>
-      </form>
-      <p class="hint">Searches the open web beyond Adzuna/Reed/Jooble. Slower — real page rendering + AI extraction. Excludes LinkedIn and Indeed.</p>
+      <div class="search-tabs" role="tablist">
+        <button type="button" class="search-tab active" data-tab="structured" role="tab" aria-selected="true">Search</button>
+        <button type="button" class="search-tab" data-tab="ai" role="tab" aria-selected="false">AI Search</button>
+        <button type="button" class="search-tab" data-tab="resume" role="tab" aria-selected="false">From Resume</button>
+      </div>
 
-      <form id="resume-search-form" class="resume-form">
-        <label class="file-btn resume-file-btn">
-          Upload resumes (PDF/DOCX/TXT, up to 10)
-          <input type="file" id="resume-upload" accept=".pdf,.docx,.txt" multiple hidden />
-        </label>
-        <div id="resume-file-list" class="resume-file-list"></div>
-        <div class="resume-search-row">
-          <input type="text" id="resume-location" placeholder="Location — e.g. Blackpool (optional)" />
-          <button type="submit" id="resume-search-btn" class="ghost" disabled>Find jobs from resumes</button>
-        </div>
-      </form>
-      <p class="hint">Extracts skills and suitable roles from each resume, then searches for matching jobs. Resumes are processed in memory only — never saved to disk.</p>
-      <div id="resume-profiles" class="resume-profiles"></div>
+      <div class="search-tab-panel" data-panel="structured">
+        <form id="search-form" class="inline-form">
+          <input type="text" name="role" placeholder="Job title/role — e.g. IT support" />
+          <input type="text" name="keywords" placeholder="Keywords — e.g. remote, urgent" />
+          <input type="text" name="location" placeholder="Location — e.g. London" />
+          <select name="experience">
+            <option value="">Experience — any</option>
+            <option value="0-1 years">0-1 years</option>
+            <option value="1-2 years">1-2 years</option>
+            <option value="2-3 years">2-3 years</option>
+            <option value="3-5 years">3-5 years</option>
+            <option value="5-8 years">5-8 years</option>
+            <option value="8+ years">8+ years</option>
+          </select>
+          <button type="submit">Search</button>
+        </form>
+      </div>
 
-      <form id="search-form" class="inline-form">
-        <input type="text" name="role" placeholder="Job title/role — e.g. IT support" />
-        <input type="text" name="keywords" placeholder="Keywords — e.g. remote, urgent" />
-        <input type="text" name="location" placeholder="Location — e.g. London" />
-        <select name="experience">
-          <option value="">Experience — any</option>
-          <option value="0-1 years">0-1 years</option>
-          <option value="1-2 years">1-2 years</option>
-          <option value="2-3 years">2-3 years</option>
-          <option value="3-5 years">3-5 years</option>
-          <option value="5-8 years">5-8 years</option>
-          <option value="8+ years">8+ years</option>
-        </select>
-        <button type="submit">Search</button>
-      </form>
+      <div class="search-tab-panel" data-panel="ai" hidden>
+        <form id="ai-search-form" class="inline-form">
+          <input type="text" name="prompt" placeholder='Describe what you want — e.g. "Software Engineering internships in UK"' />
+          <button type="submit" class="ghost">AI Search</button>
+        </form>
+      </div>
+
+      <div class="search-tab-panel" data-panel="resume" hidden>
+        <form id="resume-search-form" class="resume-form">
+          <label class="file-btn resume-file-btn">
+            Upload resumes (PDF/DOCX/TXT, up to 10)
+            <input type="file" id="resume-upload" accept=".pdf,.docx,.txt" multiple hidden />
+          </label>
+          <div id="resume-file-list" class="resume-file-list"></div>
+          <div class="resume-search-row">
+            <input type="text" id="resume-location" placeholder="Location — e.g. Blackpool (optional)" />
+            <button type="submit" id="resume-search-btn" class="ghost" disabled>Find jobs from resumes</button>
+          </div>
+        </form>
+      </div>
+
       <label class="check-inline">
         <input type="checkbox" id="include-sent" />
         Show jobs already sent before
       </label>
       <p class="hint" id="search-meta">Search to see results here.</p>
+      <div id="resume-profiles" class="resume-profiles"></div>
       <ul id="job-results" class="jobs selectable"></ul>
     </section>
 
