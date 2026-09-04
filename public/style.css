@@ -1,21 +1,21 @@
 /* ============================================================
-   Job Broadcaster — "Wire Dispatch" theme (light)
-   A dispatch console sending job bulletins out over a signal —
+   Job Broadcaster â€” "Wire Dispatch" theme (light)
+   A dispatch console sending job bulletins out over a signal â€”
    teletype paper, amber signal ink, wire-bulletin job listings.
    ============================================================ */
 
 :root {
-  --bg: #F2EFE6;          /* pale teletype-paper ivory */
-  --panel: #FBF9F3;       /* card/panel surface, slightly lighter */
-  --panel-raised: #FFFFFF;/* inputs — the cleanest surface */
-  --ink: #231F16;         /* warm near-black, teletype ink */
-  --ink-soft: #6B6355;    /* muted warm gray-brown for secondary text */
-  --line: #D8D2C0;        /* soft warm border */
-  --signal-text: #8A5209; /* darkened amber/ochre — used for TEXT (headings, links) */
-  --signal-fill: #E8A23C; /* brighter amber — used for solid FILLS (buttons) */
-  --signal-dim: #EFD8A0;  /* pale amber, badge backgrounds */
-  --success: #3F7A57;     /* muted sage, confirmation states only */
-  --danger: #B84A38;      /* warm brick-red, errors only */
+  --bg: #F2EFE6;
+  --panel: #FBF9F3;
+  --panel-raised: #FFFFFF;
+  --ink: #231F16;
+  --ink-soft: #6B6355;
+  --line: #D8D2C0;
+  --signal-text: #8A5209;
+  --signal-fill: #E8A23C;
+  --signal-dim: #EFD8A0;
+  --success: #3F7A57;
+  --danger: #B84A38;
   --radius: 3px;
 }
 
@@ -64,8 +64,6 @@ body {
   border-radius: var(--radius);
 }
 
-/* Signature element: an "on air" signal lamp — the one place this
-   design spends its boldness. Subtle, not a light show. */
 .mark::after {
   content: "";
   position: absolute;
@@ -142,6 +140,44 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--signal-text);
+}
+
+/* ---- Search method tabs ---- */
+
+.search-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.search-tab {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  background: transparent;
+  color: var(--ink-soft);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 8px 12px 10px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+.search-tab:hover {
+  color: var(--signal-text);
+  transform: none;
+  box-shadow: none;
+}
+.search-tab.active {
+  color: var(--signal-text);
+  border-bottom-color: var(--signal-text);
+}
+
+.search-tab-panel {
+  padding-top: 4px;
 }
 
 .inline-form {
@@ -270,8 +306,6 @@ button.ghost:hover { background: var(--signal-dim); }
   overflow-y: auto;
 }
 
-/* Job listings read like wire dispatches — a torn ticket edge on the
-   left, monospace metadata, like something that just came off the wire. */
 .job {
   border: 1px solid var(--line);
   border-left: 3px dashed var(--signal-text);
