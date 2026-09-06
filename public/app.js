@@ -3,6 +3,8 @@ const aiSearchForm = document.getElementById('ai-search-form');
 const searchMeta = document.getElementById('search-meta');
 const includeSentCheckbox = document.getElementById('include-sent');
 const jobResults = document.getElementById('job-results');
+const exportExcelBtn = document.getElementById('export-excel-btn');
+const exportStatus = document.getElementById('export-status');
 
 const resumeSearchForm = document.getElementById('resume-search-form');
 const resumeUploadInput = document.getElementById('resume-upload');
@@ -239,6 +241,51 @@ function renderResumeProfiles(profiles, failed) {
     resumeProfilesEl.appendChild(div);
   }
 }
+
+// ---------- Export selected jobs to Excel ----------
+// Works the same regardless of which tab (Search, AI Search, From Resume)
+// produced the current selection — all three share the same selectedJobIds
+// set and the same server-side job cache.
+
+exportExcelBtn.addEventListener('click', async () => {
+  const jobIds = [...selectedJobIds];
+  if (jobIds.length === 0) {
+    exportStatus.textContent = 'Select at least one job first.';
+    return;
+  }
+
+  exportExcelBtn.disabled = true;
+  exportStatus.textContent = 'Preparing file…';
+
+  try {
+    const res = await fetch('/api/export/excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobIds }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Export failed.');
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'selected-jobs.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    exportStatus.textContent = `Downloaded ${jobIds.length} job(s).`;
+  } catch (err) {
+    exportStatus.textContent = err.message;
+  } finally {
+    exportExcelBtn.disabled = false;
+  }
+});
 
 // ---------- Step 3: recipients ----------
 
