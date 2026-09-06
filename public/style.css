@@ -1,6 +1,6 @@
 /* ============================================================
-   Job Broadcaster â€” "Wire Dispatch" theme (light)
-   A dispatch console sending job bulletins out over a signal â€”
+   Job Broadcaster — "Wire Dispatch" theme (light)
+   A dispatch console sending job bulletins out over a signal —
    teletype paper, amber signal ink, wire-bulletin job listings.
    ============================================================ */
 
@@ -532,3 +532,12 @@ button.ghost:hover { background: var(--signal-dim); }
   font-family: ui-monospace, monospace;
   font-size: 12px;
 }
+
+.job-results-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.job-results-actions .hint { margin: 0; }
