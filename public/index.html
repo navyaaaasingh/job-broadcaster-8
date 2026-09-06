@@ -58,6 +58,7 @@
           <input type="text" name="prompt" placeholder='Describe what you want — e.g. "Software Engineering internships in UK"' />
           <button type="submit" class="ghost">AI Search</button>
         </form>
+        <p class="hint">Searches the open web beyond Adzuna/Reed/Jooble. Slower — real page rendering + AI extraction. Excludes LinkedIn and Indeed.</p>
       </div>
 
       <div class="search-tab-panel" data-panel="resume" hidden>
@@ -72,6 +73,7 @@
             <button type="submit" id="resume-search-btn" class="ghost" disabled>Find jobs from resumes</button>
           </div>
         </form>
+        <p class="hint">Extracts each resume's top skills and suitable roles, then searches for matching jobs. Resumes are processed in memory only — never saved to disk.</p>
       </div>
 
       <label class="check-inline">
@@ -81,6 +83,10 @@
       <p class="hint" id="search-meta">Search to see results here.</p>
       <div id="resume-profiles" class="resume-profiles"></div>
       <ul id="job-results" class="jobs selectable"></ul>
+      <div class="job-results-actions">
+        <button type="button" id="export-excel-btn" class="ghost">Export selected to Excel</button>
+        <span class="hint" id="export-status"></span>
+      </div>
     </section>
 
     <section class="card">
