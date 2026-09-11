@@ -46,13 +46,71 @@ function jobMatchesKeywords(job, keywords) {
   });
 }
 
+// Training-provider promotions are not useful job-search results for this app.
+// Match provider names/domains rather than generic words such as "training"
+// so legitimate jobs that mention training are not accidentally removed.
+const TRAINING_PROVIDER_PATTERNS = [
+  /(^|[^a-z])newto([^a-z]|$)/i,
+  /(^|[^a-z])itol(?:\s+training)?([^a-z]|$)/i,
+  /(?:^|[./\s_-])newto(?:\.co\.uk|\.com)?(?:$|[./\s_-])/i,
+  /(?:^|[./\s_-])itoltraining(?:\.co\.uk|\.com)?(?:$|[./\s_-])/i,
+];
+
+function isTrainingProviderPromotion(job) {
+  const haystack = [job.title, job.company, job.description, job.url, job.source]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return TRAINING_PROVIDER_PATTERNS.some((pattern) => pattern.test(haystack));
+}
+
+function filterTrainingProviderPromotions(jobs) {
+  return jobs.filter((job) => !isTrainingProviderPromotion(job));
+}
+
 const EXPERIENCE_SYNONYMS = {
-  '0-1 years': ['0-1 year', '0-1 years', 'entry level', 'entry-level', 'graduate', 'no experience required', 'no experience necessary', 'fresher', 'trainee', 'apprentice'],
-  '1-2 years': ['1-2 year', '1-2 years', 'junior', 'early career'],
-  '2-3 years': ['2-3 year', '2-3 years', 'mid level', 'mid-level', 'intermediate'],
-  '3-5 years': ['3-5 year', '3-5 years', 'mid-senior', 'experienced'],
-  '5-8 years': ['5-8 year', '5-8 years', 'senior', 'experienced'],
-  '8+ years': ['8+ years', 'senior', 'lead', 'principal', 'director', 'head of', 'extensive experience'],
+  '0-3 years': [
+    '0-3 year',
+    '0-3 years',
+    '0-1 year',
+    '0-1 years',
+    '1-2 year',
+    '1-2 years',
+    '2-3 year',
+    '2-3 years',
+    'entry level',
+    'entry-level',
+    'graduate',
+    'no experience required',
+    'no experience necessary',
+    'fresher',
+    'trainee',
+    'apprentice',
+    'junior',
+    'early career',
+  ],
+  '3-5 years': [
+    '3-5 year',
+    '3-5 years',
+    'mid-senior',
+    'experienced',
+  ],
+  '5-8 years': [
+    '5-8 year',
+    '5-8 years',
+    'senior',
+    'experienced',
+  ],
+  '8+ years': [
+    '8+ years',
+    'senior',
+    'lead',
+    'principal',
+    'director',
+    'head of',
+    'extensive experience',
+  ],
 };
 
 const ALL_EXPERIENCE_PHRASES = Object.values(EXPERIENCE_SYNONYMS).flat();
@@ -99,7 +157,7 @@ router.post('/search', async (req, res) => {
       fetchWebExtractedJobs(),
     ]);
 
-    const all = [...adzuna, ...reed, ...jooble, ...webExtracted];
+    const all = filterTrainingProviderPromotions([...adzuna, ...reed, ...jooble, ...webExtracted]);
     const byId = new Map();
     for (const job of all) {
       if (job.id && job.title) byId.set(job.id, job);
@@ -139,7 +197,7 @@ router.post('/ai-search', async (req, res) => {
   }
 
   try {
-    let jobs = await runAiSearchPipeline(prompt);
+    let jobs = filterTrainingProviderPromotions(await runAiSearchPipeline(prompt));
 
     const recipientEmails = recipients.listRecipients().map((r) => r.email);
     const totalBeforeFilter = jobs.length;
@@ -229,7 +287,9 @@ router.post('/ai-search/resumes', resumeUpload.array('resumes', 10), async (req,
         prompt
       );
 
-      const jobsForProfile = await runAiSearchPipeline(prompt);
+      const jobsForProfile = filterTrainingProviderPromotions(
+        await runAiSearchPipeline(prompt)
+      );
 
       console.log(
         `[ai-search/resumes] Search returned ${jobsForProfile.length} jobs.`
@@ -312,16 +372,14 @@ router.post('/export/excel', (req, res) => {
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
-    // Reasonable column widths so the file doesn't open with everything
-    // squeezed into default-width columns.
     worksheet['!cols'] = [
-      { wch: 32 }, // Title
-      { wch: 24 }, // Company
-      { wch: 18 }, // Location
-      { wch: 14 }, // Experience
-      { wch: 12 }, // Source
-      { wch: 40 }, // Apply Link
-      { wch: 60 }, // Description
+      { wch: 32 },
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 40 },
+      { wch: 60 },
     ];
 
     const workbook = XLSX.utils.book_new();
