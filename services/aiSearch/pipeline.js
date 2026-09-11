@@ -4,12 +4,44 @@ const { renderMultiple, closeBrowser } = require('./pageRenderer');
 const { extractJobsFromPage } = require('./jobExtractor');
 const { extractStructuredJobs } = require('../webExtract/structuredData');
 
+function looksLikeDirectJobSearch(prompt) {
+  const clean = (prompt || '').trim().toLowerCase();
+
+  // Resume-generated searchQuery values are already curated by Gemini.
+  // Running them through a second Gemini query-planning call is redundant.
+  return (
+    clean.length <= 500 &&
+    /\bjobs?\b/.test(clean) &&
+    (clean.includes(',') ||
+      /\b(entry[- ]level|junior|associate|graduate|internship|intern)\b/.test(clean))
+  );
+}
+
+function buildDirectQueries(prompt, maxQueries) {
+  const clean = prompt.trim();
+  const queries = [clean];
+
+  if (queries.length < maxQueries && !/\bcareers?\b/i.test(clean)) {
+    queries.push(`${clean} careers`);
+  }
+
+  if (
+    queries.length < maxQueries &&
+    /\b(intern|internship|graduate)\b/i.test(clean) &&
+    !/\bentry[- ]level\b/i.test(clean)
+  ) {
+    queries.push(`${clean} entry-level`);
+  }
+
+  return queries.slice(0, maxQueries);
+}
+
 /**
  * Full AI job-search pipeline.
  *
- * Gemini is intentionally kept out of the discovery step when callers
- * provide queryOverride. Resume search uses that path so one resume does
- * not spend an extra Gemini request on query planning.
+ * Gemini is kept out of discovery when the input is already a curated,
+ * resume-style job query. This removes an unnecessary Gemini request per
+ * resume while preserving the Gemini planner for free-form AI searches.
  */
 async function runAiSearchPipeline(
   prompt,
@@ -17,20 +49,16 @@ async function runAiSearchPipeline(
     maxPages = 6,
     maxQueries = 3,
     maxResultsPerQuery = 4,
-    maxGeminiFallbacks = 3,
+    maxGeminiFallbacks = 2,
     queryOverride = null,
   } = {}
 ) {
   if (!process.env.GEMINI_API_KEY) {
-    throw new Error(
-      'GEMINI_API_KEY not set — AI search is not configured.'
-    );
+    throw new Error('GEMINI_API_KEY not set — AI search is not configured.');
   }
 
   if (!process.env.TAVILY_API_KEY) {
-    throw new Error(
-      'TAVILY_API_KEY not set — AI search is not configured.'
-    );
+    throw new Error('TAVILY_API_KEY not set — AI search is not configured.');
   }
 
   const cleanPrompt = (prompt || '').trim();
@@ -51,12 +79,16 @@ async function runAiSearchPipeline(
     ? queryOverride
     : [];
 
+  if (queries.length === 0 && looksLikeDirectJobSearch(cleanPrompt)) {
+    queries = buildDirectQueries(cleanPrompt, maxQueries);
+    console.log(
+      '[aiSearch:pipeline] Curated job query detected; skipping Gemini query planning.'
+    );
+  }
+
   if (queries.length === 0) {
     try {
-      queries = await planSearchQueries(
-        cleanPrompt,
-        { maxQueries }
-      );
+      queries = await planSearchQueries(cleanPrompt, { maxQueries });
     } catch (err) {
       console.error(
         '[aiSearch:pipeline] Query planning failed:',
@@ -64,8 +96,6 @@ async function runAiSearchPipeline(
       );
       queries = [cleanPrompt];
     }
-  } else {
-    console.log('[aiSearch:pipeline] Using caller-provided search queries; skipping Gemini query planning.');
   }
 
   queries = (Array.isArray(queries) ? queries : [])
@@ -88,15 +118,9 @@ async function runAiSearchPipeline(
   let candidates = [];
 
   try {
-    candidates = await searchMultiple(
-      queries,
-      { maxResultsPerQuery }
-    );
+    candidates = await searchMultiple(queries, { maxResultsPerQuery });
   } catch (err) {
-    console.error(
-      '[aiSearch:pipeline] Tavily search failed:',
-      err.message
-    );
+    console.error('[aiSearch:pipeline] Tavily search failed:', err.message);
     return [];
   }
 
@@ -113,11 +137,7 @@ async function runAiSearchPipeline(
   // STEP 3: Limit pages to render
   // ---------------------------------------------------------
 
-  const safeMaxPages = Math.max(
-    1,
-    Math.min(Number(maxPages) || 6, 10)
-  );
-
+  const safeMaxPages = Math.max(1, Math.min(Number(maxPages) || 6, 10));
   const toRender = candidates.slice(0, safeMaxPages);
 
   console.log(
@@ -131,14 +151,9 @@ async function runAiSearchPipeline(
   let rendered = [];
 
   try {
-    rendered = await renderMultiple(
-      toRender.map((candidate) => candidate.url)
-    );
+    rendered = await renderMultiple(toRender.map((candidate) => candidate.url));
   } catch (err) {
-    console.error(
-      '[aiSearch:pipeline] Page rendering failed:',
-      err.message
-    );
+    console.error('[aiSearch:pipeline] Page rendering failed:', err.message);
     return [];
   }
 
@@ -160,11 +175,11 @@ async function runAiSearchPipeline(
   let extractionFailures = 0;
   const allJobs = [];
 
-  // Structured data requires no Gemini request. Limit AI fallback calls so
-  // one search cannot consume the entire free-tier daily allowance.
+  // Structured data requires no Gemini request. Keep Gemini fallbacks small
+  // so one search cannot consume the entire Free-tier daily allowance.
   const fallbackLimit = Math.max(
     0,
-    Math.min(Number(maxGeminiFallbacks) || 3, rendered.length)
+    Math.min(Number(maxGeminiFallbacks) || 2, rendered.length)
   );
 
   for (const page of rendered) {
@@ -177,11 +192,7 @@ async function runAiSearchPipeline(
     }
 
     try {
-      const structured = extractStructuredJobs(
-        html,
-        url,
-        'ai-search'
-      );
+      const structured = extractStructuredJobs(html, url, 'ai-search');
 
       if (Array.isArray(structured) && structured.length > 0) {
         structuredHits++;
@@ -204,11 +215,7 @@ async function runAiSearchPipeline(
         `[aiSearch:pipeline] No structured jobs found on ${url}; using Gemini extraction (${aiFallbacks}/${fallbackLimit}).`
       );
 
-      const jobs = await extractJobsFromPage(
-        html,
-        url,
-        'ai-search'
-      );
+      const jobs = await extractJobsFromPage(html, url, 'ai-search');
 
       if (Array.isArray(jobs) && jobs.length > 0) {
         console.log(
