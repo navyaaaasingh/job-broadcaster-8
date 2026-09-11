@@ -1,0 +1,30 @@
+/* ---- Expanded job results ---- */
+
+.jobs {
+  max-height: min(620px, 68vh);
+  overflow-y: auto;
+}
+
+.job {
+  padding: 15px 16px;
+}
+
+.job-desc {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.job-select > span {
+  min-width: 0;
+}
+
+@media (max-width: 700px) {
+  .jobs {
+    max-height: 70vh;
+  }
+
+  .job {
+    padding: 13px 14px;
+  }
+}
