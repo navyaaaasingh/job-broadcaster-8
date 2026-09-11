@@ -3,12 +3,11 @@ const { searchMultiple } = require('./tavilySearch');
 const { renderMultiple, closeBrowser } = require('./pageRenderer');
 const { extractJobsFromPage } = require('./jobExtractor');
 const { extractStructuredJobs } = require('../webExtract/structuredData');
+const { reportProgress } = require('../searchProgress');
 
 function looksLikeDirectJobSearch(prompt) {
   const clean = (prompt || '').trim().toLowerCase();
 
-  // Resume-generated searchQuery values are already curated by Gemini.
-  // Running them through a second Gemini query-planning call is redundant.
   return (
     clean.length <= 500 &&
     /\bjobs?\b/.test(clean) &&
@@ -36,13 +35,6 @@ function buildDirectQueries(prompt, maxQueries) {
   return queries.slice(0, maxQueries);
 }
 
-/**
- * Full AI job-search pipeline.
- *
- * Gemini is kept out of discovery when the input is already a curated,
- * resume-style job query. This removes an unnecessary Gemini request per
- * resume while preserving the Gemini planner for free-form AI searches.
- */
 async function runAiSearchPipeline(
   prompt,
   {
@@ -62,38 +54,32 @@ async function runAiSearchPipeline(
   }
 
   const cleanPrompt = (prompt || '').trim();
-
   if (!cleanPrompt) {
     console.warn('[aiSearch:pipeline] Empty search prompt.');
     return [];
   }
 
+  reportProgress(8, 'Understanding your search', 'Interpreting your request and preparing the search.');
   console.log('[aiSearch:pipeline] Starting AI search');
   console.log('[aiSearch:pipeline] Input prompt:', cleanPrompt);
 
   // ---------------------------------------------------------
   // STEP 1: Generate or reuse search queries
   // ---------------------------------------------------------
-
   let queries = Array.isArray(queryOverride) && queryOverride.length > 0
     ? queryOverride
     : [];
 
   if (queries.length === 0 && looksLikeDirectJobSearch(cleanPrompt)) {
     queries = buildDirectQueries(cleanPrompt, maxQueries);
-    console.log(
-      '[aiSearch:pipeline] Curated job query detected; skipping Gemini query planning.'
-    );
+    console.log('[aiSearch:pipeline] Curated job query detected; skipping Gemini query planning.');
   }
 
   if (queries.length === 0) {
     try {
       queries = await planSearchQueries(cleanPrompt, { maxQueries });
     } catch (err) {
-      console.error(
-        '[aiSearch:pipeline] Query planning failed:',
-        err.message
-      );
+      console.error('[aiSearch:pipeline] Query planning failed:', err.message);
       queries = [cleanPrompt];
     }
   }
@@ -105,16 +91,13 @@ async function runAiSearchPipeline(
     .slice(0, Math.max(1, Number(maxQueries) || 3));
 
   console.log('[aiSearch:pipeline] Planned queries:', queries);
+  reportProgress(18, 'Finding relevant jobs', `Searching across ${queries.length} search quer${queries.length === 1 ? 'y' : 'ies'}.`);
 
-  if (queries.length === 0) {
-    console.warn('[aiSearch:pipeline] No search queries generated.');
-    return [];
-  }
+  if (queries.length === 0) return [];
 
   // ---------------------------------------------------------
   // STEP 2: Search Tavily
   // ---------------------------------------------------------
-
   let candidates = [];
 
   try {
@@ -124,32 +107,21 @@ async function runAiSearchPipeline(
     return [];
   }
 
-  console.log(
-    `[aiSearch:pipeline] Tavily returned ${candidates.length} unique candidate pages.`
-  );
+  console.log(`[aiSearch:pipeline] Tavily returned ${candidates.length} unique candidate pages.`);
+  reportProgress(34, 'Finding relevant jobs', `Found ${candidates.length} candidate job pages.`);
 
-  if (candidates.length === 0) {
-    console.warn('[aiSearch:pipeline] Tavily returned no candidate pages.');
-    return [];
-  }
+  if (candidates.length === 0) return [];
 
   // ---------------------------------------------------------
-  // STEP 3: Limit pages to render
+  // STEP 3: Limit and render pages
   // ---------------------------------------------------------
-
   const safeMaxPages = Math.max(1, Math.min(Number(maxPages) || 6, 10));
   const toRender = candidates.slice(0, safeMaxPages);
 
-  console.log(
-    `[aiSearch:pipeline] Rendering ${toRender.length} of ${candidates.length} candidate pages.`
-  );
-
-  // ---------------------------------------------------------
-  // STEP 4: Render pages
-  // ---------------------------------------------------------
+  console.log(`[aiSearch:pipeline] Rendering ${toRender.length} of ${candidates.length} candidate pages.`);
+  reportProgress(42, 'Analysing job requirements', `Opening ${toRender.length} relevant job pages.`);
 
   let rendered = [];
-
   try {
     rendered = await renderMultiple(toRender.map((candidate) => candidate.url));
   } catch (err) {
@@ -157,36 +129,25 @@ async function runAiSearchPipeline(
     return [];
   }
 
-  console.log(
-    `[aiSearch:pipeline] Successfully rendered ${rendered.length} pages.`
-  );
+  console.log(`[aiSearch:pipeline] Successfully rendered ${rendered.length} pages.`);
+  reportProgress(54, 'Analysing job requirements', `Analysed ${rendered.length} job pages.`);
 
-  if (rendered.length === 0) {
-    console.warn('[aiSearch:pipeline] No pages could be rendered.');
-    return [];
-  }
+  if (rendered.length === 0) return [];
 
   // ---------------------------------------------------------
-  // STEP 5: Extract jobs
+  // STEP 4: Extract jobs
   // ---------------------------------------------------------
-
   let structuredHits = 0;
   let aiFallbacks = 0;
   let extractionFailures = 0;
   const allJobs = [];
+  const fallbackLimit = Math.max(0, Math.min(Number(maxGeminiFallbacks) || 2, rendered.length));
 
-  // Structured data requires no Gemini request. Keep Gemini fallbacks small
-  // so one search cannot consume the entire Free-tier daily allowance.
-  const fallbackLimit = Math.max(
-    0,
-    Math.min(Number(maxGeminiFallbacks) || 2, rendered.length)
-  );
-
-  for (const page of rendered) {
+  for (let index = 0; index < rendered.length; index += 1) {
+    const page = rendered[index];
     const { url, html } = page;
 
     if (!html) {
-      console.warn(`[aiSearch:pipeline] Empty HTML for ${url}`);
       extractionFailures++;
       continue;
     }
@@ -196,80 +157,52 @@ async function runAiSearchPipeline(
 
       if (Array.isArray(structured) && structured.length > 0) {
         structuredHits++;
-        console.log(
-          `[aiSearch:pipeline] Structured extraction found ${structured.length} job(s) on ${url}`
-        );
         allJobs.push(...structured);
-        continue;
-      }
-
-      if (aiFallbacks >= fallbackLimit) {
-        console.log(
-          `[aiSearch:pipeline] Skipping Gemini fallback for ${url}; fallback budget exhausted.`
-        );
-        continue;
-      }
-
-      aiFallbacks++;
-      console.log(
-        `[aiSearch:pipeline] No structured jobs found on ${url}; using Gemini extraction (${aiFallbacks}/${fallbackLimit}).`
-      );
-
-      const jobs = await extractJobsFromPage(html, url, 'ai-search');
-
-      if (Array.isArray(jobs) && jobs.length > 0) {
-        console.log(
-          `[aiSearch:pipeline] Gemini extracted ${jobs.length} job(s) from ${url}`
-        );
-        allJobs.push(...jobs);
-      } else {
-        console.warn(`[aiSearch:pipeline] Gemini found no jobs on ${url}`);
+      } else if (aiFallbacks < fallbackLimit) {
+        aiFallbacks++;
+        const jobs = await extractJobsFromPage(html, url, 'ai-search');
+        if (Array.isArray(jobs) && jobs.length > 0) allJobs.push(...jobs);
       }
     } catch (err) {
       extractionFailures++;
-      console.error(
-        `[aiSearch:pipeline] Extraction failed for ${url}:`,
-        err.message
-      );
+      console.error(`[aiSearch:pipeline] Extraction failed for ${url}:`, err.message);
     }
+
+    const extractionPercent = 54 + (((index + 1) / rendered.length) * 26);
+    reportProgress(
+      extractionPercent,
+      'Matching jobs to your criteria',
+      `Analysed ${index + 1} of ${rendered.length} job pages.`
+    );
   }
 
   console.log(
     `[aiSearch:pipeline] Extraction summary:\n    structured pages: ${structuredHits}\n    Gemini fallback pages: ${aiFallbacks}\n    failed pages: ${extractionFailures}\n    jobs before deduplication: ${allJobs.length}`
   );
 
-  if (allJobs.length === 0) {
-    console.warn('[aiSearch:pipeline] No jobs extracted from any page.');
-    return [];
-  }
+  if (allJobs.length === 0) return [];
 
   // ---------------------------------------------------------
-  // STEP 6: Normalize and deduplicate
+  // STEP 5: Normalize and deduplicate
   // ---------------------------------------------------------
+  reportProgress(84, 'Ranking the best matches', 'Removing duplicates and prioritising the strongest matches.');
 
   const byKey = new Map();
-
   for (const job of allJobs) {
     if (!job) continue;
 
     const title = typeof job.title === 'string' ? job.title.trim() : '';
     const url = typeof job.url === 'string' ? job.url.trim() : '';
-
     if (!title) continue;
 
     const key = `${url || 'no-url'}::${title.toLowerCase()}`;
-
-    if (!byKey.has(key)) {
-      byKey.set(key, job);
-    }
+    if (!byKey.has(key)) byKey.set(key, job);
   }
 
   const finalJobs = [...byKey.values()];
+  reportProgress(94, 'Preparing your results', `Preparing ${finalJobs.length} relevant job result${finalJobs.length === 1 ? '' : 's'}.`);
 
-  console.log(
-    `[aiSearch:pipeline] Final jobs after deduplication: ${finalJobs.length}`
-  );
-
+  console.log(`[aiSearch:pipeline] Final jobs after deduplication: ${finalJobs.length}`);
   return finalJobs;
 }
 
