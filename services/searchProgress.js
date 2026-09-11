@@ -37,7 +37,7 @@ function updateProgress(id, percent, stage, detail = '') {
 
 function completeProgress(id, detail = '') {
   const current = getProgress(id);
-  if (!current) return;
+  if (!current || current.status !== 'running') return;
   current.status = 'complete';
   current.percent = 100;
   current.stage = '✓ Search complete';
@@ -47,7 +47,7 @@ function completeProgress(id, detail = '') {
 
 function failProgress(id, message) {
   const current = getProgress(id);
-  if (!current) return;
+  if (!current || current.status !== 'running') return;
   current.status = 'error';
   current.stage = 'Search could not be completed';
   current.detail = message || 'Something went wrong. Please try again.';
