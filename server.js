@@ -17,9 +17,8 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Search progress is deliberately implemented as lightweight polling rather
-// than SSE/WebSockets so it fits the existing request/response architecture.
-// The actual search pipeline updates this request-scoped state at real stages.
+// Search progress is lightweight polling so it fits the existing request /
+// response architecture. The search pipeline itself reports real milestones.
 app.use((req, res, next) => {
   const progressId = String(req.query.progressId || '').trim();
   const isAiSearch = req.method === 'POST' && req.path === '/api/ai-search';
@@ -32,10 +31,6 @@ app.use((req, res, next) => {
   const kind = isResumeSearch ? 'resume' : 'ai';
   startProgress(progressId, kind);
 
-  if (isResumeSearch) {
-    setResumeFileCount(Number(req.query.resumeCount) || 1);
-  }
-
   res.on('finish', () => {
     if (res.statusCode >= 400) {
       failProgress(progressId, 'The search could not be completed. Please try again.');
@@ -44,7 +39,18 @@ app.use((req, res, next) => {
     }
   });
 
-  return runWithProgressContext(progressId, kind, next);
+  req.on('close', () => {
+    // A normal request also emits close, so only treat it as cancellation if
+    // the response has not already finished.
+    if (!res.writableEnded) cancelProgress(progressId);
+  });
+
+  return runWithProgressContext(progressId, kind, () => {
+    if (kind === 'resume') {
+      setResumeFileCount(Number(req.query.resumeCount) || 1);
+    }
+    return next();
+  });
 });
 
 app.use('/api', broadcastRoutes);
