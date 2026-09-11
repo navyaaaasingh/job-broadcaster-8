@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 // Gemini model names have churned frequently — if the configured model
-// 404s (deprecated, renamed, or not available to this API key), try these
+// 404s (deprecated, renamed, or unavailable to this API key), try these
 // in order rather than failing the whole request outright.
 const FALLBACK_MODELS = [
   'gemini-2.5-flash',
@@ -9,8 +9,8 @@ const FALLBACK_MODELS = [
   'gemini-2.0-flash',
 ];
 
-// Keep requests below the Free-tier 5 RPM limit shown in AI Studio.
-// 12.5s between starts gives a small safety margin under 5 requests/minute.
+// The current Free-tier project limit shown in AI Studio is 5 RPM.
+// 12.5s between request starts keeps the process below that ceiling.
 const MIN_REQUEST_INTERVAL_MS = 12500;
 const MAX_RETRIES = 2;
 const INITIAL_BACKOFF_MS = 2000;
@@ -19,13 +19,7 @@ const MAX_BACKOFF_MS = 15000;
 let lastGeminiRequestAt = 0;
 let requestQueue = Promise.resolve();
 
-const RETRYABLE_STATUS_CODES = new Set([
-  429,
-  500,
-  502,
-  503,
-  504,
-]);
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -115,12 +109,9 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
       }
 
       // A daily quota error will not recover by retrying. Do not burn more
-      // requests or wait through multiple backoffs when the quota is already
-      // exhausted.
+      // requests or wait through backoffs when the quota is already exhausted.
       if (status === 429 && errorCode === 'quota_exceeded') {
-        console.error(
-          `[gemini] Model "${model}" hit its daily quota; not retrying.`
-        );
+        console.error(`[gemini] Model "${model}" hit its daily quota; not retrying.`);
         throw err;
       }
 
@@ -189,29 +180,16 @@ async function callGemini(prompt, { jsonMode = false } = {}) {
     } catch (err) {
       lastErr = err;
 
-      const status = err.response?.status;
-      const errorCode = getGeminiErrorCode(err);
-
-      // 404 means the model is unavailable. A per-minute 429 may be
-      // recoverable on another model, but a daily quota 429 is project quota
-      // exhaustion and should stop immediately instead of trying more models.
-      if (status === 429 && errorCode === 'quota_exceeded') {
+      // Only fall back for a model that does not exist. Do not switch models
+      // after a 429: another model request can still consume project quota,
+      // and the correct response to a rate limit is to wait/retry.
+      if (err.response?.status !== 404) {
         throw err;
       }
 
-      if (status !== 404 && status !== 429) {
-        throw err;
-      }
-
-      if (status === 404) {
-        console.warn(
-          `[gemini] Model "${model}" not found (404), trying next fallback...`
-        );
-      } else {
-        console.warn(
-          `[gemini] Model "${model}" is rate-limited (429), trying next fallback...`
-        );
-      }
+      console.warn(
+        `[gemini] Model "${model}" not found (404), trying next fallback...`
+      );
     }
   }
 
