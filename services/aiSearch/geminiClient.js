@@ -14,6 +14,14 @@ const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 10000;
 
+// Keep Gemini requests spaced out. Resume search can make several Gemini
+// calls per candidate (profile + query planning + extraction), so firing
+// them too quickly can exhaust per-minute request limits even when requests
+// are processed sequentially at the application level.
+const MIN_REQUEST_INTERVAL_MS = 4000;
+let lastGeminiRequestAt = 0;
+let requestQueue = Promise.resolve();
+
 // HTTP status codes that are generally safe to retry.
 const RETRYABLE_STATUS_CODES = new Set([
   429, // Too Many Requests / rate limit
@@ -28,9 +36,36 @@ function sleep(ms) {
 }
 
 /**
+ * Serialize and throttle all Gemini requests in this Node process.
+ * This prevents multiple resume/search operations from accidentally
+ * bursting requests against Gemini's per-minute limits.
+ */
+async function waitForGeminiSlot() {
+  const previous = requestQueue;
+  let release;
+  requestQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+
+  try {
+    const elapsed = Date.now() - lastGeminiRequestAt;
+    if (elapsed < MIN_REQUEST_INTERVAL_MS) {
+      await sleep(MIN_REQUEST_INTERVAL_MS - elapsed);
+    }
+    lastGeminiRequestAt = Date.now();
+  } finally {
+    release();
+  }
+}
+
+/**
  * Call Gemini once.
  */
 async function callGeminiOnce(model, prompt, jsonMode, apiKey) {
+  await waitForGeminiSlot();
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const body = {
@@ -97,7 +132,8 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
         throw err;
       }
 
-      // If this was the final attempt, give up.
+      // If this was the final attempt, give up and let callGemini()
+      // decide whether another model should be tried.
       if (attempt === MAX_RETRIES) {
         console.error(
           `[gemini] Model "${model}" failed after ${MAX_RETRIES + 1} attempts with status ${status}.`
@@ -105,20 +141,24 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
         throw err;
       }
 
-      // Exponential backoff:
-      // attempt 0 -> 1s
-      // attempt 1 -> 2s
-      // attempt 2 -> 4s
-      //
-      // Add a small amount of jitter so multiple requests don't
-      // retry at exactly the same time.
+      // Respect Gemini's Retry-After header when supplied. Otherwise use
+      // exponential backoff with a small jitter.
+      const retryAfterHeader = err.response?.headers?.['retry-after'];
+      const retryAfterSeconds = Number(retryAfterHeader);
+      const retryAfterMs = Number.isFinite(retryAfterSeconds)
+        ? Math.max(0, retryAfterSeconds * 1000)
+        : 0;
+
       const exponentialDelay = Math.min(
         INITIAL_BACKOFF_MS * Math.pow(2, attempt),
         MAX_BACKOFF_MS
       );
 
       const jitter = Math.floor(Math.random() * 250);
-      const delay = exponentialDelay + jitter;
+      const delay = Math.max(
+        exponentialDelay + jitter,
+        retryAfterMs
+      );
 
       console.warn(
         `[gemini] Model "${model}" returned ${status}. ` +
@@ -144,7 +184,8 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
  * Behavior:
  * 1. Try GEMINI_MODEL first.
  * 2. Retry transient errors using exponential backoff.
- * 3. If the model returns 404, move to the next fallback model.
+ * 3. If the model returns 404 or exhausts 429 retries, move to the next
+ *    fallback model.
  * 4. Do not retry authentication/configuration errors.
  */
 async function callGemini(prompt, { jsonMode = false } = {}) {
@@ -182,16 +223,24 @@ async function callGemini(prompt, { jsonMode = false } = {}) {
     } catch (err) {
       lastErr = err;
 
-      // Only move to the next model on 404.
-      // 503/429/5xx have already been retried by callGeminiWithRetry().
-      if (err.response?.status !== 404) {
+      // Move to the next model for both an unavailable model (404) and an
+      // exhausted rate limit (429). A model-specific limit may not affect
+      // the fallback model, while all other errors should fail immediately.
+      if (err.response?.status !== 404 && err.response?.status !== 429) {
         throw err;
       }
 
-      console.warn(
-        `[gemini] Model "${model}" not found (404), ` +
-          `trying next fallback...`
-      );
+      if (err.response?.status === 404) {
+        console.warn(
+          `[gemini] Model "${model}" not found (404), ` +
+            `trying next fallback...`
+        );
+      } else {
+        console.warn(
+          `[gemini] Model "${model}" is rate-limited (429) after retries, ` +
+            `trying next fallback...`
+        );
+      }
     }
   }
 
