@@ -206,10 +206,30 @@ router.post('/ai-search/resumes', resumeUpload.array('resumes', 10), async (req,
       return res.status(400).json({ error: 'Could not process any of the uploaded resumes.', failed });
     }
 
-    const searchPrompts = profiles.map((p) =>
-      extraPrompt.trim() ? `${p.searchPrompt} ${extraPrompt.trim()}` : p.searchPrompt
-    );
+  const searchPrompts = profiles.map((p) => {
+  const basePrompt = (p.searchQuery || '').trim();
+  const extra = extraPrompt.trim();
 
+  if (!basePrompt) {
+    throw new Error(
+      `Gemini generated an empty search query for ${p.fileName}.`
+    );
+  }
+
+  return extra
+    ? `${basePrompt} ${extra}`
+    : basePrompt;
+});
+    for (const prompt of searchPrompts) {
+  console.log(
+    '[ai-search/resumes] Running search with prompt:',
+    prompt
+  );
+
+  perProfileJobs.push(
+    await runAiSearchPipeline(prompt)
+  );
+}
     const perProfileJobs = [];
     for (const prompt of searchPrompts) {
       perProfileJobs.push(await runAiSearchPipeline(prompt));
