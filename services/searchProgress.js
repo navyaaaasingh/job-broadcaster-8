@@ -6,7 +6,6 @@ const PROGRESS_TTL_MS = 30 * 60 * 1000;
 
 function startProgress(id, kind) {
   if (!id) return;
-
   progressStore.set(id, {
     id,
     kind,
@@ -17,7 +16,6 @@ function startProgress(id, kind) {
     startedAt: Date.now(),
     updatedAt: Date.now(),
   });
-
   setTimeout(() => progressStore.delete(id), PROGRESS_TTL_MS);
 }
 
@@ -28,7 +26,6 @@ function getProgress(id) {
 function updateProgress(id, percent, stage, detail = '') {
   const current = getProgress(id);
   if (!current || current.status !== 'running') return;
-
   current.percent = Math.max(current.percent, Math.min(99, Math.round(percent)));
   if (stage) current.stage = stage;
   if (detail) current.detail = detail;
@@ -67,13 +64,22 @@ function getCurrentContext() {
   return progressContext.getStore() || null;
 }
 
+function mapStageForKind(kind, stage) {
+  if (kind !== 'resume') return stage;
+  const map = {
+    'Understanding your search': 'Finding relevant jobs',
+    'Analysing job requirements': 'Finding relevant jobs',
+    'Matching jobs to your criteria': 'Matching jobs to your experience',
+  };
+  return map[stage] || stage;
+}
+
 function reportProgress(percent, stage, detail = '') {
   const context = getCurrentContext();
   if (!context?.id) return;
 
-  let mappedPercent = percent;
-  if (context.kind === 'resume') mappedPercent = 30 + (percent * 0.65);
-  updateProgress(context.id, mappedPercent, stage, detail);
+  const mappedPercent = context.kind === 'resume' ? 30 + (percent * 0.65) : percent;
+  updateProgress(context.id, mappedPercent, mapStageForKind(context.kind, stage), detail);
 }
 
 function startResumeFile() {
@@ -86,7 +92,6 @@ function startResumeFile() {
 function reportResumeProgress(fileIndex, phasePercent, stage, detail = '') {
   const context = getCurrentContext();
   if (!context?.id || context.kind !== 'resume') return;
-
   const total = Math.max(1, Number(context.resumeFileCount) || 1);
   const perFile = 25 / total;
   const phase = Math.max(0, Math.min(100, phasePercent));
@@ -96,9 +101,7 @@ function reportResumeProgress(fileIndex, phasePercent, stage, detail = '') {
 
 function setResumeFileCount(count) {
   const context = getCurrentContext();
-  if (context?.kind === 'resume') {
-    context.resumeFileCount = Math.max(1, Number(count) || 1);
-  }
+  if (context?.kind === 'resume') context.resumeFileCount = Math.max(1, Number(count) || 1);
 }
 
 function runWithProgressContext(id, kind, callback) {
