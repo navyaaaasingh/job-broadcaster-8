@@ -199,40 +199,43 @@ router.post('/ai-search/resumes', resumeUpload.array('resumes', 10), async (req,
       .filter(Boolean);
 
     for (const f of failed) {
-      console.error(`[ai-search/resumes] Failed to process "${f.fileName}":`, f.error);
+      console.error(`[ai-search/resumes] Failed to process \"${f.fileName}\":`, f.error);
     }
 
     if (profiles.length === 0) {
       return res.status(400).json({ error: 'Could not process any of the uploaded resumes.', failed });
     }
 
-  const searchPrompts = profiles.map((p) => {
-  const basePrompt = (p.searchQuery || '').trim();
-  const extra = extraPrompt.trim();
+    const searchPrompts = profiles.map((p) => {
+      const basePrompt = (p.searchQuery || '').trim();
+      const extra = extraPrompt.trim();
 
-  if (!basePrompt) {
-    throw new Error(
-      `Gemini generated an empty search query for ${p.fileName}.`
-    );
-  }
+      if (!basePrompt) {
+        throw new Error(
+          `Gemini generated an empty search query for ${p.fileName}.`
+        );
+      }
 
-  return extra
-    ? `${basePrompt} ${extra}`
-    : basePrompt;
-});
-    for (const prompt of searchPrompts) {
-  console.log(
-    '[ai-search/resumes] Running search with prompt:',
-    prompt
-  );
+      return extra
+        ? `${basePrompt} ${extra}`
+        : basePrompt;
+    });
 
-  perProfileJobs.push(
-    await runAiSearchPipeline(prompt)
-  );
-}
     const perProfileJobs = [];
+
     for (const prompt of searchPrompts) {
-      perProfileJobs.push(await runAiSearchPipeline(prompt));
+      console.log(
+        '[ai-search/resumes] Running search with prompt:',
+        prompt
+      );
+
+      const jobsForProfile = await runAiSearchPipeline(prompt);
+
+      console.log(
+        `[ai-search/resumes] Search returned ${jobsForProfile.length} jobs.`
+      );
+
+      perProfileJobs.push(jobsForProfile);
     }
 
     let jobs = perProfileJobs.flat();
@@ -326,7 +329,7 @@ router.post('/export/excel', (req, res) => {
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename="selected-jobs.xlsx"');
+    res.setHeader('Content-Disposition', 'attachment; filename=\"selected-jobs.xlsx\"');
     res.send(buffer);
   } catch (err) {
     console.error('[export/excel] failed:', err.message);
@@ -369,73 +372,32 @@ router.post('/send', async (req, res) => {
   const { jobIds = [], experience = {}, subject = '', message = '' } = req.body || {};
 
   if (!Array.isArray(jobIds) || jobIds.length === 0) {
-    return res.status(400).json({ error: 'Select at least one job to send.' });
+    return res.status(400).json({ error: 'Select at least one job.' });
   }
 
-  const allJobs = getJobsByIds(jobIds).map((job) => ({
-    ...job,
-    experience: experience[job.id] || null,
-  }));
-  if (allJobs.length === 0) {
-    return res.status(400).json({
-      error: 'None of the selected jobs were found in cache. Please re-run the search and re-select.',
-    });
+  const jobs = getJobsByIds(jobIds);
+  if (jobs.length === 0) {
+    return res.status(400).json({ error: 'Selected jobs are no longer available in cache.' });
   }
 
-  const list = recipients.listRecipients();
-  if (list.length === 0) {
-    return res.status(400).json({ error: 'No recipients added yet.' });
-  }
-
-  const assignments = [];
-  const alreadyCaughtUp = [];
-  for (const recipient of list) {
-    const jobsForRecipient = allJobs.filter((job) => !sentJobs.hasBeenSentTo(job.id, recipient.email));
-    if (jobsForRecipient.length === 0) {
-      alreadyCaughtUp.push(recipient.email);
-    } else {
-      assignments.push({ recipient, jobs: jobsForRecipient });
-    }
-  }
-
-  if (assignments.length === 0) {
-    return res.status(400).json({
-      error: 'Every recipient has already received all of the selected jobs — nothing new to send.',
-    });
+  const recipientList = recipients.listRecipients();
+  if (recipientList.length === 0) {
+    return res.status(400).json({ error: 'Add at least one recipient before sending.' });
   }
 
   try {
-    const result = await sendPersonalizedBroadcast({ assignments, subject, message });
-
-    for (const { email, jobs } of result.sent) {
-      sentJobs.markSentToRecipient(jobs, email);
-    }
-
-    res.json({
-      ok: true,
-      recipientsTotal: list.length,
-      sent: result.sent.length,
-      alreadyCaughtUp: alreadyCaughtUp.length,
-      failed: result.failed,
+    const result = await sendPersonalizedBroadcast({
+      jobs,
+      recipients: recipientList,
+      experience,
+      subject,
+      message,
     });
+    res.json(result);
   } catch (err) {
     console.error('[send] failed:', err.message);
-    res.status(500).json({ error: 'Send failed.', detail: err.message });
+    res.status(500).json({ error: 'Broadcast failed.', detail: err.message });
   }
-});
-
-// Catches multer errors (file too large, too many files).
-router.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'One of the resume files is over the 5MB limit.' });
-    }
-    if (err.code === 'LIMIT_FILE_COUNT') {
-      return res.status(400).json({ error: 'Upload at most 10 resumes at once.' });
-    }
-    return res.status(400).json({ error: `Upload error: ${err.message}` });
-  }
-  next(err);
 });
 
 module.exports = router;
