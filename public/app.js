@@ -28,6 +28,144 @@ const sendBtn = document.getElementById('send-btn');
 
 let selectedJobIds = new Set();
 
+// ---------- Search filters ----------
+// Keep the existing text-search behavior while adding native, searchable
+// suggestion lists. Browsers allow users to type custom values as well as
+// select a suggestion from the dropdown.
+
+const FILTER_OPTIONS = {
+  keywords: [
+    'remote',
+    'hybrid',
+    'internship',
+    'graduate',
+    'entry level',
+    'full time',
+    'part time',
+    'immediate start',
+    'flexible working',
+  ],
+  locations: [
+    'London',
+    'Manchester',
+    'Birmingham',
+    'Leeds',
+    'Liverpool',
+    'Bristol',
+    'Edinburgh',
+    'Glasgow',
+    'Blackpool',
+    'Remote',
+  ],
+};
+
+function addDatalist(input, id, options) {
+  if (!input) return;
+
+  let datalist = document.getElementById(id);
+  if (!datalist) {
+    datalist = document.createElement('datalist');
+    datalist.id = id;
+    document.body.appendChild(datalist);
+  }
+
+  datalist.innerHTML = options
+    .map((option) => `<option value="${option}"></option>`)
+    .join('');
+  input.setAttribute('list', id);
+}
+
+function setupSearchDropdowns() {
+  const keywordsInput = document.querySelector('#search-form input[name="keywords"]');
+  const locationInput = document.querySelector('#search-form input[name="location"]');
+
+  addDatalist(keywordsInput, 'keywords-options', FILTER_OPTIONS.keywords);
+  addDatalist(locationInput, 'location-options', FILTER_OPTIONS.locations);
+  addDatalist(resumeLocationInput, 'resume-location-options', FILTER_OPTIONS.locations);
+
+  // The original experience select may still contain the old narrow brackets.
+  // Replace only its options so existing form submission/state behavior stays
+  // unchanged.
+  const experienceSelect = document.querySelector('#search-form select[name="experience"]');
+  if (experienceSelect) {
+    const currentValue = experienceSelect.value;
+    experienceSelect.innerHTML = `
+      <option value="">Career status — any</option>
+      <option value="0-3 years">Early Career Professionals: 0–3 years</option>
+      <option value="3-5 years">Senior Roles: 3–5 years</option>
+      <option value="5-8 years">Experienced Professionals: 5–8 years</option>
+      <option value="8+ years">Leadership / Senior Leadership: 8+ years</option>
+    `;
+    if ([...experienceSelect.options].some((option) => option.value === currentValue)) {
+      experienceSelect.value = currentValue;
+    }
+  }
+}
+
+function injectResponsiveWorkspaceStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .wrap {
+      max-width: 1400px;
+      padding: 32px 32px 72px;
+    }
+    .card {
+      padding: 28px;
+    }
+    .inline-form {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.15fr) minmax(180px, 1fr) minmax(180px, 1fr) minmax(230px, 1.2fr) auto;
+      align-items: center;
+    }
+    .inline-form input,
+    .inline-form select {
+      min-width: 0;
+    }
+    .jobs {
+      max-height: 62vh;
+    }
+    .job {
+      padding: 14px 16px;
+    }
+    .job-title {
+      font-size: 15px;
+    }
+    .job-desc {
+      font-size: 13.5px;
+      max-width: 1100px;
+    }
+    @media (max-width: 1000px) {
+      .inline-form {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .inline-form button {
+        width: 100%;
+      }
+    }
+    @media (max-width: 700px) {
+      .wrap {
+        padding: 20px 14px 50px;
+      }
+      .inline-form {
+        display: flex;
+      }
+      .inline-form input,
+      .inline-form select,
+      .inline-form button {
+        width: 100%;
+        flex: 1 1 100%;
+      }
+      .jobs {
+        max-height: 55vh;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+setupSearchDropdowns();
+injectResponsiveWorkspaceStyles();
+
 // ---------- Search method tabs ----------
 
 const searchTabs = document.querySelectorAll('.search-tab');
