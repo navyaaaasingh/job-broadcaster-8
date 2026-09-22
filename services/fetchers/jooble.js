@@ -10,13 +10,30 @@ async function fetchJoobleJobs({ keywords, location }) {
 
   const url = `https://jooble.org/api/${apiKey}`;
 
+  async function request(body) {
+    const { data } = await axios.post(url, body, { timeout: 10000 });
+    return data.jobs || [];
+  }
+
   try {
-    const { data } = await axios.post(
-      url,
-      { keywords: keywords || '', location: location || '' },
-      { timeout: 10000 }
-    );
-    return (data.jobs || []).map(normalize);
+    // First use Jooble's native location field.
+    let results = await request({
+      keywords: keywords || '',
+      location: location || '',
+    });
+
+    // If Jooble does not recognise a free-form location, retry with the
+    // location included in the search text rather than treating it as an
+    // invalid search.
+    if (results.length === 0 && location) {
+      console.warn(`[jooble] No results for location "${location}". Retrying with location as search text.`);
+      results = await request({
+        keywords: [keywords, location].filter(Boolean).join(' '),
+        location: '',
+      });
+    }
+
+    return results.map(normalize);
   } catch (err) {
     console.error('[jooble] fetch failed:', err.response?.status, err.message);
     return [];
