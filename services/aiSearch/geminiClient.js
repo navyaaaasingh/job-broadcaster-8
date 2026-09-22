@@ -1,16 +1,17 @@
 const axios = require('axios');
 
-// Gemini model names have churned frequently — if the configured model
-// 404s (deprecated, renamed, or unavailable to this API key), try these
-// in order rather than failing the whole request outright.
+// Gemini model names change over time. Keep the configured model as the
+// primary choice, then use current stable Flash fallbacks if the primary
+// model is temporarily unavailable or no longer available to the API key.
 const FALLBACK_MODELS = [
-  'gemini-2.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-2.5-flash-lite',
   'gemini-flash-latest',
-  'gemini-2.0-flash',
 ];
 
-// The current Free-tier project limit shown in AI Studio is 5 RPM.
-// 12.5s between request starts keeps the process below that ceiling.
+// Keep requests spaced out so we do not turn a transient service problem
+// into a rate-limit problem.
 const MIN_REQUEST_INTERVAL_MS = 12500;
 const MAX_RETRIES = 2;
 const INITIAL_BACKOFF_MS = 2000;
@@ -111,7 +112,9 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
       // A daily quota error will not recover by retrying. Do not burn more
       // requests or wait through backoffs when the quota is already exhausted.
       if (status === 429 && errorCode === 'quota_exceeded') {
-        console.error(`[gemini] Model "${model}" hit its daily quota; not retrying.`);
+        console.error(
+          `[gemini] Model "${model}" hit its daily quota; not retrying.`
+        );
         throw err;
       }
 
@@ -172,23 +175,25 @@ async function callGemini(prompt, { jsonMode = false } = {}) {
 
       if (model !== modelsToTry[0]) {
         console.warn(
-          `[gemini] Configured/primary model failed, succeeded with fallback model "${model}".`
+          `[gemini] Primary model unavailable, succeeded with fallback model "${model}".`
         );
       }
 
       return result;
     } catch (err) {
       lastErr = err;
+      const status = err.response?.status;
 
-      // Only fall back for a model that does not exist. Do not switch models
-      // after a 429: another model request can still consume project quota,
-      // and the correct response to a rate limit is to wait/retry.
-      if (err.response?.status !== 404) {
+      // A model that is unavailable to the current API key (404), or
+      // temporarily overloaded (500/502/503/504), can be retried with the
+      // next model. Do not switch models after a 429 because another model
+      // request can still consume project quota.
+      if (![404, 500, 502, 503, 504].includes(status)) {
         throw err;
       }
 
       console.warn(
-        `[gemini] Model "${model}" not found (404), trying next fallback...`
+        `[gemini] Model "${model}" unavailable (HTTP ${status}); trying next fallback...`
       );
     }
   }
