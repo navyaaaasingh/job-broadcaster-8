@@ -39,12 +39,11 @@ app.use((req, res, next) => {
     }
   });
 
-  req.on('close', () => {
-    // A normal request also emits close, so only treat it as cancellation if
-    // the response has not already finished.
-    if (!res.writableEnded) cancelProgress(progressId);
-  });
-
+  // Do not treat the request socket closing as an explicit search
+  // cancellation. Reverse proxies/browsers can close or recycle a connection
+  // while the server-side search is still running. The actual Cancel button
+  // uses POST /api/search-progress/:id/cancel and is the only operation that
+  // should mark the progress session as cancelled.
   return runWithProgressContext(progressId, kind, () => {
     if (kind === 'resume') {
       setResumeFileCount(Number(req.query.resumeCount) || 1);
