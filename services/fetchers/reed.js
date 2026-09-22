@@ -10,7 +10,7 @@ async function fetchReedJobs({ keywords, location }) {
 
   const url = 'https://www.reed.co.uk/api/1.0/search';
 
-  try {
+  async function request(params) {
     const { data } = await axios.get(url, {
       timeout: 10000,
       auth: { username: apiKey, password: '' },
@@ -18,12 +18,31 @@ async function fetchReedJobs({ keywords, location }) {
         'User-Agent': 'Mozilla/5.0 (compatible; JobBroadcaster/1.0)',
       },
       params: {
-        keywords: keywords || undefined,
-        locationName: location || undefined,
+        ...params,
         resultsToTake: 25,
       },
     });
-    return (data.results || []).map(normalize);
+    return data.results || [];
+  }
+
+  try {
+    // First use Reed's native location search.
+    let results = await request({
+      keywords: keywords || undefined,
+      locationName: location || undefined,
+    });
+
+    // Reed's location index may not recognise every free-form county,
+    // district, or smaller place. Retry using the location as part of the
+    // keyword query so free-form locations do not behave like invalid input.
+    if (results.length === 0 && location) {
+      console.warn(`[reed] No results for location "${location}". Retrying with location as search text.`);
+      results = await request({
+        keywords: [keywords, location].filter(Boolean).join(' '),
+      });
+    }
+
+    return results.map(normalize);
   } catch (err) {
     const status = err.response?.status;
     const body = err.response?.data;
