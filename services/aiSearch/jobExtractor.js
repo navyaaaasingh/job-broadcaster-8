@@ -21,6 +21,26 @@ function preparePageTextForAI(html) {
 }
 
 /**
+ * Parse Gemini's JSON response defensively. JSON mode should normally return
+ * plain JSON, but some model fallbacks can still wrap it in a markdown fence.
+ */
+function parseJobsResponse(response) {
+  if (typeof response !== 'string') return [];
+
+  let cleaned = response.trim();
+
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+  }
+
+  const parsed = JSON.parse(cleaned);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+/**
  * Ask Gemini to extract job postings from a rendered page's text into the
  * app's standard job shape. Returns an empty array on any failure — this
  * is a best-effort step, one bad page should never break the whole search.
@@ -41,8 +61,7 @@ ${pageText}`;
 
   try {
     const response = await callGemini(prompt, { jsonMode: true });
-    const rawJobs = JSON.parse(response);
-    if (!Array.isArray(rawJobs)) return [];
+    const rawJobs = parseJobsResponse(response);
 
     return rawJobs
       .filter((j) => j && j.title)
