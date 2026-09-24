@@ -111,6 +111,7 @@ function runWithProgressContext(id, kind, callback) {
 
 module.exports = {
   progressContext,
+  getCurrentContext,
   startProgress,
   getProgress,
   updateProgress,
