@@ -17,6 +17,12 @@ const MAX_RETRIES = 2;
 const INITIAL_BACKOFF_MS = 2000;
 const MAX_BACKOFF_MS = 15000;
 
+// Temporarily skip models that repeatedly return availability/server errors.
+// This prevents every page from paying the 3-request retry cost for the same
+// unavailable primary model.
+const MODEL_COOLDOWN_MS = 5 * 60 * 1000;
+const unavailableModels = new Map();
+
 let lastGeminiRequestAt = 0;
 let requestQueue = Promise.resolve();
 
@@ -109,8 +115,6 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
         throw err;
       }
 
-      // A daily quota error will not recover by retrying. Do not burn more
-      // requests or wait through backoffs when the quota is already exhausted.
       if (status === 429 && errorCode === 'quota_exceeded') {
         console.error(
           `[gemini] Model "${model}" hit its daily quota; not retrying.`
@@ -150,6 +154,30 @@ async function callGeminiWithRetry(model, prompt, jsonMode, apiKey) {
   throw lastErr;
 }
 
+function getAvailableModels(models) {
+  const now = Date.now();
+
+  return models.filter((model) => {
+    const cooldownUntil = unavailableModels.get(model) || 0;
+
+    if (cooldownUntil <= now) {
+      unavailableModels.delete(model);
+      return true;
+    }
+
+    console.warn(
+      `[gemini] Skipping model "${model}" because it is temporarily unavailable.`
+    );
+    return false;
+  });
+}
+
+function markModelUnavailable(model, status) {
+  if ([404, 500, 502, 503, 504].includes(status)) {
+    unavailableModels.set(model, Date.now() + MODEL_COOLDOWN_MS);
+  }
+}
+
 async function callGemini(prompt, { jsonMode = false } = {}) {
   const apiKey = process.env.GEMINI_API_KEY;
 
@@ -158,9 +186,16 @@ async function callGemini(prompt, { jsonMode = false } = {}) {
   }
 
   const configured = process.env.GEMINI_MODEL;
-  const modelsToTry = [configured, ...FALLBACK_MODELS].filter(
+  const configuredModels = [configured, ...FALLBACK_MODELS].filter(
     (m, i, arr) => m && arr.indexOf(m) === i
   );
+
+  const modelsToTry = getAvailableModels(configuredModels);
+
+  if (modelsToTry.length === 0) {
+    console.warn('[gemini] All models are on cooldown; retrying the configured fallback list.');
+    modelsToTry.push(...configuredModels);
+  }
 
   let lastErr;
 
@@ -179,18 +214,17 @@ async function callGemini(prompt, { jsonMode = false } = {}) {
         );
       }
 
+      unavailableModels.delete(model);
       return result;
     } catch (err) {
       lastErr = err;
       const status = err.response?.status;
 
-      // A model that is unavailable to the current API key (404), or
-      // temporarily overloaded (500/502/503/504), can be retried with the
-      // next model. Do not switch models after a 429 because another model
-      // request can still consume project quota.
       if (![404, 500, 502, 503, 504].includes(status)) {
         throw err;
       }
+
+      markModelUnavailable(model, status);
 
       console.warn(
         `[gemini] Model "${model}" unavailable (HTTP ${status}); trying next fallback...`
